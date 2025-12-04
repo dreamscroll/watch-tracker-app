@@ -65,6 +65,12 @@ const App: React.FC = () => {
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState<"inventory" | "wear">("inventory");
 
+  // Quick Add form state
+  const [showAdd, setShowAdd] = useState(false);
+  const [newModel, setNewModel] = useState("");
+  const [newPurchase, setNewPurchase] = useState("");
+  const [newParts, setNewParts] = useState("");
+
   const derived = useMemo(() => {
     const wearCountMap: Record<string, number> = {};
 
@@ -97,6 +103,39 @@ const App: React.FC = () => {
       { id: crypto.randomUUID(), watchId, date: dateISO },
       ...prev,
     ]);
+  };
+
+  // ===== Quick Add Watch =====
+  const handleAddWatch = () => {
+    if (!newModel.trim()) {
+      alert("Please enter a watch model.");
+      return;
+    }
+
+    const purchasePrice = newPurchase.trim()
+      ? parseNumber(newPurchase)
+      : 0;
+    const partsCost = newParts.trim() ? parseNumber(newParts) : 0;
+
+    const newWatch: WatchItem = {
+      id: crypto.randomUUID(),
+      model: newModel.trim(),
+      purchasePrice,
+      partsCost,
+      postedPrice: null,
+      soldPrice: null,
+      status: "Available",
+      dateSold: null,
+      notes: undefined,
+    };
+
+    setItems((prev) => [newWatch, ...prev]);
+
+    // reset form
+    setNewModel("");
+    setNewPurchase("");
+    setNewParts("");
+    setShowAdd(false);
   };
 
   // ===== Watches CSV (matches your spreadsheet headers) =====
@@ -154,7 +193,7 @@ const App: React.FC = () => {
         .slice(1)
         .map((line) => {
           const cols = line.split(",");
-          const model = cols[idxModel] ?? "";
+          const model = idxModel >= 0 ? cols[idxModel] ?? "" : "";
           if (!model.trim()) return null;
 
           const purchasePrice =
@@ -167,7 +206,8 @@ const App: React.FC = () => {
               : null;
           const soldPrice =
             idxSold >= 0 && cols[idxSold] ? parseNumber(cols[idxSold]) : null;
-          const statusRaw = (idxStatus >= 0 ? cols[idxStatus] : "").trim();
+          const statusRaw =
+            idxStatus >= 0 ? (cols[idxStatus] || "").trim() : "";
           const status: "Available" | "Sold" =
             statusRaw === "Sold" ? "Sold" : "Available";
           const dateSold = idxDateSold >= 0 ? cols[idxDateSold] || "" : "";
@@ -235,7 +275,9 @@ const App: React.FC = () => {
         const modelRaw = (cols[idxModel] || "").trim();
         if (!dateRaw || !modelRaw) return;
 
-        const watch = items.find((i) => i.model.trim() === modelRaw);
+        const watch = items.find(
+          (i) => i.model.trim() === modelRaw
+        );
         if (!watch) return;
         if (watch.dateSold && dateRaw > watch.dateSold) return;
 
@@ -282,8 +324,9 @@ const App: React.FC = () => {
             marginRight: 8,
             borderRadius: 4,
             border:
-              activeTab === "inventory" ? "2px solid black" : "1px solid gray",
-            background: activeTab === "inventory" ? "#eee" : "white",
+              activeTab === "inventory" ? "2px solid white" : "1px solid gray",
+            background: activeTab === "inventory" ? "#444" : "#222",
+            color: "white",
           }}
         >
           Inventory
@@ -293,8 +336,9 @@ const App: React.FC = () => {
           style={{
             padding: "6px 12px",
             borderRadius: 4,
-            border: activeTab === "wear" ? "2px solid black" : "1px solid gray",
-            background: activeTab === "wear" ? "#eee" : "white",
+            border: activeTab === "wear" ? "2px solid white" : "1px solid gray",
+            background: activeTab === "wear" ? "#444" : "#222",
+            color: "white",
           }}
         >
           Wear Log
@@ -303,75 +347,211 @@ const App: React.FC = () => {
 
       {activeTab === "inventory" && (
         <div>
-          {/* Filters + CSV controls */}
+          {/* Quick Add + Filters + CSV controls */}
           <div
             style={{
               display: "flex",
-              flexWrap: "wrap",
+              flexDirection: "column",
               gap: 12,
               marginBottom: 16,
-              alignItems: "flex-end",
             }}
           >
-            <div style={{ display: "flex", flexDirection: "column" }}>
-              <label htmlFor="search">Search</label>
-              <input
-                id="search"
-                type="text"
-                placeholder="Search model…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                style={{ padding: 4, minWidth: 200 }}
-              />
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column" }}>
-              <label htmlFor="status-filter">Status</label>
-              <select
-                id="status-filter"
-                value={filter}
-                onChange={(e) =>
-                  setFilter(e.target.value as "All" | "Available" | "Sold")
-                }
-                style={{ padding: 4, minWidth: 140 }}
+            {/* Row: Add button */}
+            <div>
+              <button
+                onClick={() => setShowAdd((prev) => !prev)}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: 4,
+                  border: "1px solid #aaa",
+                  background: "#2d6cdf",
+                  color: "white",
+                  fontWeight: 600,
+                }}
               >
-                <option value="All">All</option>
-                <option value="Available">Available</option>
-                <option value="Sold">Sold</option>
-              </select>
+                {showAdd ? "Cancel" : "+ Add Watch"}
+              </button>
             </div>
 
+            {/* Quick Add form */}
+            {showAdd && (
+              <div
+                style={{
+                  borderRadius: 6,
+                  border: "1px solid #555",
+                  padding: 10,
+                  background: "#111",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 8,
+                }}
+              >
+                <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                  Quick Add Watch
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 6,
+                  }}
+                >
+                  <label>
+                    Model
+                    <input
+                      type="text"
+                      value={newModel}
+                      placeholder="e.g. Sugess 1963"
+                      onChange={(e) => setNewModel(e.target.value)}
+                      style={{
+                        padding: 4,
+                        width: "100%",
+                        marginTop: 2,
+                      }}
+                    />
+                  </label>
+                  <label>
+                    Purchase Price
+                    <input
+                      type="text"
+                      value={newPurchase}
+                      placeholder="e.g. 250"
+                      onChange={(e) => setNewPurchase(e.target.value)}
+                      style={{
+                        padding: 4,
+                        width: "100%",
+                        marginTop: 2,
+                      }}
+                    />
+                  </label>
+                  <label>
+                    Parts Cost
+                    <input
+                      type="text"
+                      value={newParts}
+                      placeholder="e.g. 30"
+                      onChange={(e) => setNewParts(e.target.value)}
+                      style={{
+                        padding: 4,
+                        width: "100%",
+                        marginTop: 2,
+                      }}
+                    />
+                  </label>
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "flex-end",
+                    gap: 8,
+                    marginTop: 6,
+                  }}
+                >
+                  <button
+                    onClick={() => {
+                      setShowAdd(false);
+                      setNewModel("");
+                      setNewPurchase("");
+                      setNewParts("");
+                    }}
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: 4,
+                      border: "1px solid #666",
+                      background: "#222",
+                      color: "white",
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleAddWatch}
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: 4,
+                      border: "1px solid #2d6cdf",
+                      background: "#2d6cdf",
+                      color: "white",
+                      fontWeight: 600,
+                    }}
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Filters + CSV (stacked for mobile) */}
             <div
               style={{
                 display: "flex",
                 flexWrap: "wrap",
-                gap: 8,
-                marginLeft: "auto",
+                gap: 12,
+                alignItems: "flex-end",
               }}
             >
-              <button
-                onClick={exportWatchesCSV}
-                style={{ padding: "6px 10px", borderRadius: 4 }}
-              >
-                Export Watches CSV
-              </button>
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                <label htmlFor="search">Search</label>
+                <input
+                  id="search"
+                  type="text"
+                  placeholder="Search model…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  style={{ padding: 4, minWidth: 180, maxWidth: "100%" }}
+                />
+              </div>
 
-              <label
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                <label htmlFor="status-filter">Status</label>
+                <select
+                  id="status-filter"
+                  value={filter}
+                  onChange={(e) =>
+                    setFilter(
+                      e.target.value as "All" | "Available" | "Sold"
+                    )
+                  }
+                  style={{ padding: 4, minWidth: 120 }}
+                >
+                  <option value="All">All</option>
+                  <option value="Available">Available</option>
+                  <option value="Sold">Sold</option>
+                </select>
+              </div>
+
+              <div
                 style={{
-                  padding: "6px 10px",
-                  borderRadius: 4,
-                  border: "1px solid gray",
-                  cursor: "pointer",
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 8,
+                  marginLeft: "auto",
                 }}
               >
-                Import Watches CSV
-                <input
-                  type="file"
-                  accept=".csv"
-                  style={{ display: "none" }}
-                  onChange={handleWatchesFileChange}
-                />
-              </label>
+                <button
+                  onClick={exportWatchesCSV}
+                  style={{ padding: "6px 10px", borderRadius: 4 }}
+                >
+                  Export Watches CSV
+                </button>
+
+                <label
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 4,
+                    border: "1px solid gray",
+                    cursor: "pointer",
+                  }}
+                >
+                  Import Watches CSV
+                  <input
+                    type="file"
+                    accept=".csv"
+                    style={{ display: "none" }}
+                    onChange={handleWatchesFileChange}
+                  />
+                </label>
+              </div>
             </div>
           </div>
 
@@ -386,31 +566,31 @@ const App: React.FC = () => {
             >
               <thead>
                 <tr>
-                  <th style={{ borderBottom: "1px solid #ccc", padding: 6 }}>
+                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
                     Model
                   </th>
-                  <th style={{ borderBottom: "1px solid #ccc", padding: 6 }}>
+                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
                     Purchase
                   </th>
-                  <th style={{ borderBottom: "1px solid #ccc", padding: 6 }}>
+                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
                     Parts
                   </th>
-                  <th style={{ borderBottom: "1px solid #ccc", padding: 6 }}>
+                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
                     Posted
                   </th>
-                  <th style={{ borderBottom: "1px solid #ccc", padding: 6 }}>
+                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
                     Sold
                   </th>
-                  <th style={{ borderBottom: "1px solid #ccc", padding: 6 }}>
+                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
                     Status
                   </th>
-                  <th style={{ borderBottom: "1px solid #ccc", padding: 6 }}>
+                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
                     Date Sold
                   </th>
-                  <th style={{ borderBottom: "1px solid #ccc", padding: 6 }}>
+                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
                     Worn ×
                   </th>
-                  <th style={{ borderBottom: "1px solid #ccc", padding: 6 }}>
+                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
                     Log
                   </th>
                 </tr>
@@ -418,12 +598,12 @@ const App: React.FC = () => {
               <tbody>
                 {derived.filtered.map((w: any) => (
                   <tr key={w.id}>
-                    <td style={{ borderBottom: "1px solid #eee", padding: 6 }}>
+                    <td style={{ borderBottom: "1px solid #333", padding: 6 }}>
                       {w.model}
                     </td>
                     <td
                       style={{
-                        borderBottom: "1px solid #eee",
+                        borderBottom: "1px solid #333",
                         padding: 6,
                         textAlign: "right",
                       }}
@@ -432,7 +612,7 @@ const App: React.FC = () => {
                     </td>
                     <td
                       style={{
-                        borderBottom: "1px solid #eee",
+                        borderBottom: "1px solid #333",
                         padding: 6,
                         textAlign: "right",
                       }}
@@ -441,7 +621,7 @@ const App: React.FC = () => {
                     </td>
                     <td
                       style={{
-                        borderBottom: "1px solid #eee",
+                        borderBottom: "1px solid #333",
                         padding: 6,
                         textAlign: "right",
                       }}
@@ -450,22 +630,22 @@ const App: React.FC = () => {
                     </td>
                     <td
                       style={{
-                        borderBottom: "1px solid #eee",
+                        borderBottom: "1px solid #333",
                         padding: 6,
                         textAlign: "right",
                       }}
                     >
                       {toCurrency(w.soldPrice ?? null)}
                     </td>
-                    <td style={{ borderBottom: "1px solid #eee", padding: 6 }}>
+                    <td style={{ borderBottom: "1px solid #333", padding: 6 }}>
                       {w.status}
                     </td>
-                    <td style={{ borderBottom: "1px solid #eee", padding: 6 }}>
+                    <td style={{ borderBottom: "1px solid #333", padding: 6 }}>
                       {w.dateSold || "—"}
                     </td>
                     <td
                       style={{
-                        borderBottom: "1px solid #eee",
+                        borderBottom: "1px solid #333",
                         padding: 6,
                         textAlign: "right",
                       }}
@@ -474,7 +654,7 @@ const App: React.FC = () => {
                     </td>
                     <td
                       style={{
-                        borderBottom: "1px solid #eee",
+                        borderBottom: "1px solid #333",
                         padding: 6,
                         textAlign: "right",
                       }}
@@ -552,10 +732,10 @@ const App: React.FC = () => {
             >
               <thead>
                 <tr>
-                  <th style={{ borderBottom: "1px solid #ccc", padding: 6 }}>
+                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
                     Date
                   </th>
-                  <th style={{ borderBottom: "1px solid #ccc", padding: 6 }}>
+                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
                     Watch
                   </th>
                 </tr>
@@ -567,7 +747,7 @@ const App: React.FC = () => {
                     <tr key={log.id}>
                       <td
                         style={{
-                          borderBottom: "1px solid #eee",
+                          borderBottom: "1px solid #333",
                           padding: 6,
                         }}
                       >
@@ -575,7 +755,7 @@ const App: React.FC = () => {
                       </td>
                       <td
                         style={{
-                          borderBottom: "1px solid #eee",
+                          borderBottom: "1px solid #333",
                           padding: 6,
                         }}
                       >
