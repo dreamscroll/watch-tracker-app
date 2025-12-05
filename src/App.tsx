@@ -19,6 +19,13 @@ type WearLog = {
   end: string | null; // ISO datetime or null if still wearing
 };
 
+type BackupFileV1 = {
+  version: 1;
+  exportedAt: string; // ISO timestamp
+  items: WatchItem[];
+  wearLogs: WearLog[];
+};
+
 const STORAGE_ITEMS = "watch-tracker-items-v1";
 const STORAGE_WEAR = "watch-tracker-wear-v2";
 
@@ -29,7 +36,7 @@ const parseNumber = (v: string) => {
 
 const toCurrency = (n: number | null | undefined) =>
   typeof n === "number" && !Number.isNaN(n)
-    ? n.toLocaleString(undefined, { style: "currency", currency: "CAD" })
+    ? n.toLocaleString(undefined, { style: "currency", currency: "USD" })
     : "—";
 
 const formatDateTime = (iso: string | null) => {
@@ -775,6 +782,61 @@ const App: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
+  // ===== FULL BACKUP (JSON) =====
+  const exportFullBackup = () => {
+    const backup: BackupFileV1 = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      items,
+      wearLogs,
+    };
+
+    const json = JSON.stringify(backup, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+
+    const dateLabel = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    const a = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    a.href = url;
+    a.download = `watch-tracker-backup-${dateLabel}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const importFullBackup = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const text = String(e.target?.result || "");
+        const parsed = JSON.parse(text) as Partial<BackupFileV1>;
+
+        if (
+          !parsed ||
+          typeof parsed !== "object" ||
+          parsed.version !== 1 ||
+          !Array.isArray(parsed.items) ||
+          !Array.isArray(parsed.wearLogs)
+        ) {
+          alert("This file does not look like a valid Watch Tracker backup.");
+          return;
+        }
+
+        const ok = window.confirm(
+          "Importing this backup will REPLACE your current watches and wear log. Continue?"
+        );
+        if (!ok) return;
+
+        setItems(parsed.items as WatchItem[]);
+        setWearLogs(parsed.wearLogs as WearLog[]);
+        alert("Backup imported successfully.");
+      } catch (err) {
+        console.error(err);
+        alert("Failed to import backup. Is this the correct JSON file?");
+      }
+    };
+    reader.readAsText(file);
+  };
+
   const handleWatchesFileChange = (
     e: React.ChangeEvent<HTMLInputElement>
   ) => {
@@ -789,11 +851,27 @@ const App: React.FC = () => {
     e.target.value = "";
   };
 
+  const handleBackupFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) importFullBackup(file);
+    e.target.value = "";
+  };
+
   return (
     <div style={{ maxWidth: 1000, margin: "0 auto", padding: 16 }}>
-      <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 16 }}>
+      <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 4 }}>
         Watch Tracker
       </h1>
+      <div
+        style={{
+          fontSize: 12,
+          color: "#aaa",
+          marginBottom: 16,
+        }}
+      >
+        Tip: Export a full backup JSON from the Inventory tab once in a while so
+        you never lose your collection.
+      </div>
 
       {/* Tabs */}
       <div style={{ marginBottom: 16 }}>
@@ -875,7 +953,7 @@ const App: React.FC = () => {
       {/* INVENTORY TAB */}
       {activeTab === "inventory" && (
         <div>
-          {/* Quick Add + CSV */}
+          {/* Quick Add + CSV + Backup */}
           <div
             style={{
               display: "flex",
@@ -894,6 +972,7 @@ const App: React.FC = () => {
                   background: "#2d6cdf",
                   color: "white",
                   fontWeight: 600,
+                  marginRight: 8,
                 }}
               >
                 {showAdd ? "Cancel" : "+ Add Watch"}
@@ -1035,6 +1114,34 @@ const App: React.FC = () => {
                   accept=".csv"
                   style={{ display: "none" }}
                   onChange={handleWatchesFileChange}
+                />
+              </label>
+
+              <button
+                onClick={exportFullBackup}
+                style={{
+                  padding: "6px 10px",
+                  borderRadius: 4,
+                  border: "1px solid #2d6cdf",
+                }}
+              >
+                Export FULL Backup (JSON)
+              </button>
+
+              <label
+                style={{
+                  padding: "6px 10px",
+                  borderRadius: 4,
+                  border: "1px solid gray",
+                  cursor: "pointer",
+                }}
+              >
+                Import Backup JSON
+                <input
+                  type="file"
+                  accept="application/json,.json"
+                  style={{ display: "none" }}
+                  onChange={handleBackupFileChange}
                 />
               </label>
             </div>
