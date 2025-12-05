@@ -333,6 +333,73 @@ const App: React.FC = () => {
     );
   };
 
+  const deleteWatch = (id: string) => {
+    const watch = items.find((w) => w.id === id);
+    const name = watch?.model || "this watch";
+
+    const ok = window.confirm(
+      'Delete "' +
+        name +
+        '" from your records? This will also delete its wear history.'
+    );
+    if (!ok) return;
+
+    setItems((prev) => prev.filter((w) => w.id !== id));
+    setWearLogs((prev) => prev.filter((l) => l.watchId !== id));
+  };
+
+  const editWatch = (id: string) => {
+    const watch = items.find((w) => w.id === id);
+    if (!watch) return;
+
+    const modelInput = window.prompt("Edit model:", watch.model);
+    if (!modelInput || modelInput.trim() === "") return;
+
+    const purchaseInput = window.prompt(
+      "Edit purchase price:",
+      String(watch.purchasePrice)
+    );
+    const partsInput = window.prompt(
+      "Edit parts cost:",
+      String(watch.partsCost)
+    );
+    const postedInput = window.prompt(
+      "Edit posted sale price (blank for none):",
+      watch.postedPrice != null ? String(watch.postedPrice) : ""
+    );
+    const notesInput = window.prompt(
+      "Edit notes (optional):",
+      watch.notes ?? ""
+    );
+
+    setItems((prev) =>
+      prev.map((w) =>
+        w.id === id
+          ? {
+              ...w,
+              model: modelInput.trim(),
+              purchasePrice:
+                purchaseInput && purchaseInput.trim() !== ""
+                  ? parseNumber(purchaseInput)
+                  : 0,
+              partsCost:
+                partsInput && partsInput.trim() !== ""
+                  ? parseNumber(partsInput)
+                  : 0,
+              postedPrice:
+                postedInput && postedInput.trim() !== ""
+                  ? parseNumber(postedInput)
+                  : null,
+              notes:
+                notesInput && notesInput.trim() !== ""
+                  ? notesInput.trim()
+                  : undefined,
+            }
+          : w
+      )
+    );
+  };
+
   // ===== Watches CSV (matches spreadsheet headers) =====
   const exportWatchesCSV = () => {
     const header = [
@@ -861,6 +928,12 @@ const App: React.FC = () => {
                   <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
                     Mark sold
                   </th>
+                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
+                    Edit
+                  </th>
+                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
+                    Delete
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -942,12 +1015,46 @@ const App: React.FC = () => {
                         Sold
                       </button>
                     </td>
+                    <td
+                      style={{
+                        borderBottom: "1px solid #333",
+                        padding: 6,
+                        textAlign: "right",
+                      }}
+                    >
+                      <button
+                        onClick={() => editWatch(w.id)}
+                        style={{ padding: "4px 8px", borderRadius: 4 }}
+                      >
+                        Edit
+                      </button>
+                    </td>
+                    <td
+                      style={{
+                        borderBottom: "1px solid #333",
+                        padding: 6,
+                        textAlign: "right",
+                      }}
+                    >
+                      <button
+                        onClick={() => deleteWatch(w.id)}
+                        style={{
+                          padding: "4px 8px",
+                          borderRadius: 4,
+                          background: "#550000",
+                          color: "white",
+                          border: "none",
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </td>
                   </tr>
                 ))}
                 {derived.available.length === 0 && (
                   <tr>
                     <td
-                      colSpan={8}
+                      colSpan={10}
                       style={{
                         padding: 8,
                         textAlign: "center",
@@ -1053,6 +1160,9 @@ const App: React.FC = () => {
                   <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
                     Edit
                   </th>
+                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
+                    Delete
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -1142,12 +1252,32 @@ const App: React.FC = () => {
                         Edit
                       </button>
                     </td>
+                    <td
+                      style={{
+                        borderBottom: "1px solid #333",
+                        padding: 6,
+                        textAlign: "right",
+                      }}
+                    >
+                      <button
+                        onClick={() => deleteWatch(w.id)}
+                        style={{
+                          padding: "4px 8px",
+                          borderRadius: 4,
+                          background: "#550000",
+                          color: "white",
+                          border: "none",
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </td>
                   </tr>
                 ))}
                 {derived.sold.length === 0 && (
                   <tr>
                     <td
-                      colSpan={9}
+                      colSpan={10}
                       style={{
                         padding: 8,
                         textAlign: "center",
