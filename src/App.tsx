@@ -92,6 +92,13 @@ const App: React.FC = () => {
     useState<"inventory" | "sold" | "wear">("inventory");
   const [search, setSearch] = useState("");
 
+  // Filters
+  const [soldYearFilter, setSoldYearFilter] = useState<string>("all");
+  const [soldProfitFilter, setSoldProfitFilter] = useState<
+    "all" | "profit" | "loss" | "breakeven"
+  >("all");
+  const [wearWatchFilter, setWearWatchFilter] = useState<string>("all");
+
   // Quick Add form state
   const [showAdd, setShowAdd] = useState(false);
   const [newModel, setNewModel] = useState("");
@@ -152,6 +159,61 @@ const App: React.FC = () => {
 
     return { available, sold, soldSummary, wearCountMap, activeWear };
   }, [items, wearLogs, search]);
+
+  // ===== Extra derived data for filters =====
+  const soldYears = useMemo(() => {
+    const years = new Set<string>();
+    (derived.sold as any[]).forEach((w) => {
+      if (w.dateSold && typeof w.dateSold === "string" && w.dateSold.length >= 4) {
+        years.add(w.dateSold.slice(0, 4));
+      }
+    });
+    return Array.from(years).sort();
+  }, [derived.sold]);
+
+  const filteredSold = useMemo(() => {
+    return (derived.sold as any[]).filter((w) => {
+      if (soldYearFilter !== "all") {
+        if (!w.dateSold || !String(w.dateSold).startsWith(soldYearFilter)) {
+          return false;
+        }
+      }
+      if (soldProfitFilter === "profit") {
+        return typeof w.profit === "number" && w.profit > 0;
+      }
+      if (soldProfitFilter === "loss") {
+        return typeof w.profit === "number" && w.profit < 0;
+      }
+      if (soldProfitFilter === "breakeven") {
+        return typeof w.profit === "number" && w.profit === 0;
+      }
+      return true;
+    });
+  }, [derived.sold, soldYearFilter, soldProfitFilter]);
+
+  const soldSummaryFiltered = useMemo(
+    () =>
+      filteredSold.reduce(
+        (acc, w: any) => {
+          acc.totalCost += w.totalCost;
+          if (typeof w.soldPrice === "number") acc.totalSold += w.soldPrice;
+          if (typeof w.profit === "number") acc.totalProfit += w.profit;
+          return acc;
+        },
+        { totalCost: 0, totalSold: 0, totalProfit: 0 }
+      ),
+    [filteredSold]
+  );
+
+  const wearLabels = useMemo(() => {
+    const labels = new Set<string>();
+    wearLogs.forEach((log) => {
+      const watch = items.find((i) => i.id === log.watchId);
+      const label = (watch?.model || "").trim();
+      if (label) labels.add(label);
+    });
+    return Array.from(labels).sort();
+  }, [wearLogs, items]);
 
   // ===== Wear handling =====
   const startWear = (watchId: string) => {
@@ -338,9 +400,7 @@ const App: React.FC = () => {
     const name = watch?.model || "this watch";
 
     const ok = window.confirm(
-      'Delete "' +
-        name +
-        '" from your records? This will also delete its wear history.'
+      `Delete "${name}" from your records? This will also delete its wear history.`
     );
     if (!ok) return;
 
@@ -400,7 +460,7 @@ const App: React.FC = () => {
     );
   };
 
-  // ===== Watches CSV (matches spreadsheet headers) =====
+  // ===== Watches CSV =====
   const exportWatchesCSV = () => {
     const header = [
       "Watch Model",
@@ -501,7 +561,8 @@ const App: React.FC = () => {
     const header = ["Watch Model", "Start", "End"];
     const rows = wearLogs.map((log) => {
       const watch = items.find((i) => i.id === log.watchId);
-      return [watch?.model ?? "", log.start, log.end ?? ""];
+      const label = watch?.model ?? "";
+      return [label, log.start, log.end ?? ""];
     });
 
     const csv = [header, ...rows].map((r) => r.join(",")).join("\n");
@@ -704,7 +765,7 @@ const App: React.FC = () => {
         </button>
       </div>
 
-      {/* Shared search */}
+      {/* Shared search (acts as filter for Inventory + Sold) */}
       <div
         style={{
           marginBottom: 12,
@@ -714,7 +775,7 @@ const App: React.FC = () => {
           gap: 4,
         }}
       >
-        <label htmlFor="search">Search by model</label>
+        <label htmlFor="search">Filter by model</label>
         <input
           id="search"
           type="text"
@@ -1074,7 +1135,50 @@ const App: React.FC = () => {
       {/* SOLD TAB */}
       {activeTab === "sold" && (
         <div>
-          {/* Summary bar */}
+          {/* Filters row */}
+          <div
+            style={{
+              marginBottom: 12,
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 8,
+              alignItems: "center",
+              fontSize: 14,
+            }}
+          >
+            <div>
+              <span>Year: </span>
+              <select
+                value={soldYearFilter}
+                onChange={(e) => setSoldYearFilter(e.target.value)}
+                style={{ padding: 4 }}
+              >
+                <option value="all">All</option>
+                {soldYears.map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <span>Result: </span>
+              <select
+                value={soldProfitFilter}
+                onChange={(e) =>
+                  setSoldProfitFilter(e.target.value as any)
+                }
+                style={{ padding: 4 }}
+              >
+                <option value="all">All</option>
+                <option value="profit">Profit only</option>
+                <option value="loss">Loss only</option>
+                <option value="breakeven">Break-even</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Summary bar (respects filters) */}
           <div
             style={{
               marginBottom: 12,
@@ -1091,19 +1195,19 @@ const App: React.FC = () => {
             <div>
               <div style={{ fontSize: 12, color: "#aaa" }}>Total Cost</div>
               <div>
-                {toCurrency(derived.soldSummary.totalCost || 0)}
+                {toCurrency(soldSummaryFiltered.totalCost || 0)}
               </div>
             </div>
             <div>
               <div style={{ fontSize: 12, color: "#aaa" }}>Total Sold</div>
               <div>
-                {toCurrency(derived.soldSummary.totalSold || 0)}
+                {toCurrency(soldSummaryFiltered.totalSold || 0)}
               </div>
             </div>
             <div>
               <div style={{ fontSize: 12, color: "#aaa" }}>Total Profit</div>
               <div>
-                {toCurrency(derived.soldSummary.totalProfit || 0)}
+                {toCurrency(soldSummaryFiltered.totalProfit || 0)}
               </div>
             </div>
             <div style={{ marginLeft: "auto" }}>
@@ -1166,7 +1270,7 @@ const App: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {derived.sold.map((w: any) => (
+                {filteredSold.map((w: any) => (
                   <tr key={w.id}>
                     <td style={{ borderBottom: "1px solid #333", padding: 6 }}>
                       {w.model}
@@ -1274,7 +1378,7 @@ const App: React.FC = () => {
                     </td>
                   </tr>
                 ))}
-                {derived.sold.length === 0 && (
+                {filteredSold.length === 0 && (
                   <tr>
                     <td
                       colSpan={10}
@@ -1284,7 +1388,7 @@ const App: React.FC = () => {
                         color: "#777",
                       }}
                     >
-                      No sold watches yet.
+                      No sold watches match the current filters.
                     </td>
                   </tr>
                 )}
@@ -1313,13 +1417,20 @@ const App: React.FC = () => {
                   Currently wearing
                 </div>
                 <div style={{ fontSize: 14 }}>
-                  {
-                    items.find(
-                      (i) => i.id === derived.activeWear!.watchId
-                    )?.model
-                  }
-                  <br />
-                  Since: {formatDateTime(derived.activeWear.start)}
+                  {(() => {
+                    const active = derived.activeWear!;
+                    const watch = items.find(
+                      (i) => i.id === active.watchId
+                    );
+                    const label = watch?.model || "(deleted)";
+                    return (
+                      <>
+                        {label}
+                        <br />
+                        Since: {formatDateTime(active.start)}
+                      </>
+                    );
+                  })()}
                 </div>
               </>
             ) : (
@@ -1328,6 +1439,32 @@ const App: React.FC = () => {
                 “Wear now”.
               </div>
             )}
+          </div>
+
+          {/* Wear filters */}
+          <div
+            style={{
+              marginBottom: 12,
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 8,
+              alignItems: "center",
+              fontSize: 14,
+            }}
+          >
+            <span>Filter by watch:</span>
+            <select
+              value={wearWatchFilter}
+              onChange={(e) => setWearWatchFilter(e.target.value)}
+              style={{ padding: 4 }}
+            >
+              <option value="all">All watches</option>
+              {wearLabels.map((label) => (
+                <option key={label} value={label}>
+                  {label}
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* Controls */}
@@ -1404,74 +1541,84 @@ const App: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {wearLogs.map((log) => {
-                  const watch = items.find((i) => i.id === log.watchId);
-                  return (
-                    <tr key={log.id}>
-                      <td
-                        style={{
-                          borderBottom: "1px solid #333",
-                          padding: 6,
-                        }}
-                      >
-                        {watch ? watch.model : "(deleted)"}
-                      </td>
-                      <td
-                        style={{
-                          borderBottom: "1px solid #333",
-                          padding: 6,
-                        }}
-                      >
-                        {formatDateTime(log.start)}
-                      </td>
-                      <td
-                        style={{
-                          borderBottom: "1px solid #333",
-                          padding: 6,
-                        }}
-                      >
-                        {formatDateTime(log.end)}
-                      </td>
-                      <td
-                        style={{
-                          borderBottom: "1px solid #333",
-                          padding: 6,
-                        }}
-                      >
-                        {formatDuration(log.start, log.end)}
-                      </td>
-                      <td
-                        style={{
-                          borderBottom: "1px solid #333",
-                          padding: 6,
-                        }}
-                      >
-                        <button
-                          onClick={() => editWearLog(log.id)}
+                {wearLogs
+                  .filter((log) => {
+                    if (wearWatchFilter === "all") return true;
+                    const watch = items.find(
+                      (i) => i.id === log.watchId
+                    );
+                    const label = (watch?.model || "").trim();
+                    return label === wearWatchFilter;
+                  })
+                  .map((log) => {
+                    const watch = items.find((i) => i.id === log.watchId);
+                    const label = watch ? watch.model : "(deleted)";
+                    return (
+                      <tr key={log.id}>
+                        <td
                           style={{
-                            padding: "3px 6px",
-                            borderRadius: 4,
-                            marginRight: 4,
+                            borderBottom: "1px solid #333",
+                            padding: 6,
                           }}
                         >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => deleteWearLog(log.id)}
+                          {label}
+                        </td>
+                        <td
                           style={{
-                            padding: "3px 6px",
-                            borderRadius: 4,
-                            background: "#550000",
-                            color: "white",
-                            border: "none",
+                            borderBottom: "1px solid #333",
+                            padding: 6,
                           }}
                         >
-                          Delete
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
+                          {formatDateTime(log.start)}
+                        </td>
+                        <td
+                          style={{
+                            borderBottom: "1px solid #333",
+                            padding: 6,
+                          }}
+                        >
+                          {formatDateTime(log.end)}
+                        </td>
+                        <td
+                          style={{
+                            borderBottom: "1px solid #333",
+                            padding: 6,
+                          }}
+                        >
+                          {formatDuration(log.start, log.end)}
+                        </td>
+                        <td
+                          style={{
+                            borderBottom: "1px solid #333",
+                            padding: 6,
+                          }}
+                        >
+                          <button
+                            onClick={() => editWearLog(log.id)}
+                            style={{
+                              padding: "3px 6px",
+                              borderRadius: 4,
+                              marginRight: 4,
+                            }}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => deleteWearLog(log.id)}
+                            style={{
+                              padding: "3px 6px",
+                              borderRadius: 4,
+                              background: "#550000",
+                              color: "white",
+                              border: "none",
+                            }}
+                          >
+                            Delete
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 {wearLogs.length === 0 && (
                   <tr>
                     <td
