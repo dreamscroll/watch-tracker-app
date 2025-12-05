@@ -29,7 +29,7 @@ const parseNumber = (v: string) => {
 
 const toCurrency = (n: number | null | undefined) =>
   typeof n === "number" && !Number.isNaN(n)
-    ? n.toLocaleString(undefined, { style: "currency", currency: "USD" })
+    ? n.toLocaleString(undefined, { style: "currency", currency: "CAD" })
     : "—";
 
 const formatDateTime = (iso: string | null) => {
@@ -50,6 +50,21 @@ const formatDuration = (start: string, end: string | null) => {
   const hours = Math.floor(mins / 60);
   const rem = mins % 60;
   return rem ? `${hours}h ${rem}m` : `${hours}h`;
+};
+
+const formatTotalDuration = (totalMinutes: number) => {
+  const mins = Math.round(totalMinutes);
+  if (mins < 60) return `${mins} min`;
+  const hours = Math.floor(mins / 60);
+  const rem = mins % 60;
+  if (hours < 24) {
+    return rem ? `${hours}h ${rem}m` : `${hours}h`;
+  }
+  const days = Math.floor(hours / 24);
+  const remHours = hours % 24;
+  if (!remHours && !rem) return `${days}d`;
+  if (!rem) return `${days}d ${remHours}h`;
+  return `${days}d ${remHours}h ${rem}m`;
 };
 
 const useLocalData = () => {
@@ -89,7 +104,7 @@ const useLocalData = () => {
 const App: React.FC = () => {
   const { items, setItems, wearLogs, setWearLogs } = useLocalData();
   const [activeTab, setActiveTab] =
-    useState<"inventory" | "sold" | "wear">("inventory");
+    useState<"inventory" | "sold" | "wear" | "stats">("inventory");
   const [search, setSearch] = useState("");
 
   // Filters
@@ -215,6 +230,46 @@ const App: React.FC = () => {
     return Array.from(labels).sort();
   }, [wearLogs, items]);
 
+  // ===== Stats per watch (wear count + total minutes) =====
+  const statsByWatch = useMemo(() => {
+    const map: Record<
+      string,
+      { watch: WatchItem; wearCount: number; totalMinutes: number }
+    > = {};
+
+    items.forEach((w) => {
+      map[w.id] = { watch: w, wearCount: 0, totalMinutes: 0 };
+    });
+
+    wearLogs.forEach((log) => {
+      const entry = map[log.watchId];
+      if (!entry) return;
+
+      const s = new Date(log.start);
+      const e = log.end ? new Date(log.end) : new Date();
+      if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) return;
+      const ms = e.getTime() - s.getTime();
+      if (ms <= 0) return;
+
+      const mins = ms / 60000;
+      entry.wearCount += 1;
+      entry.totalMinutes += mins;
+    });
+
+    return Object.values(map).sort((a, b) => b.wearCount - a.wearCount);
+  }, [items, wearLogs]);
+
+  // Quick highlights for Stats tab
+  const favouriteWatch = statsByWatch.find((s) => s.wearCount > 0) || null;
+  const mostProfitableWatch =
+    (derived.sold as any[])
+      .filter((w) => typeof w.profit === "number")
+      .sort((a, b) => (b.profit ?? 0) - (a.profit ?? 0))[0] || null;
+
+  const totalWatches = items.length;
+  const totalAvailable = items.filter((w) => w.status === "Available").length;
+  const totalSoldCount = items.filter((w) => w.status === "Sold").length;
+
   // ===== Wear handling =====
   const startWear = (watchId: string) => {
     const watch = items.find((i) => i.id === watchId);
@@ -291,9 +346,27 @@ const App: React.FC = () => {
   };
 
   // ===== Inventory helpers =====
+  const undoSold = (id: string) => {
+    const watch = items.find((w) => w.id === id);
+    if (!watch) return;
+
+    const ok = window.confirm(
+      `Move "${watch.model}" back to inventory as Available?`
+    );
+    if (!ok) return;
+
+    setItems((prev) =>
+      prev.map((w) =>
+        w.id === id
+          ? { ...w, status: "Available", soldPrice: null, dateSold: null }
+          : w
+      )
+    );
+  };
+
   const handleAddWatch = () => {
     if (!newModel.trim()) {
-      alert("Please enter a watch model.");
+      alert("Please enter a model name.");
       return;
     }
 
@@ -556,7 +629,7 @@ const App: React.FC = () => {
     reader.readAsText(file);
   };
 
-  // ===== Wear CSV (Watch Model, Start, End) =====
+  // ===== Wear CSV =====
   const exportWearCSV = () => {
     const header = ["Watch Model", "Start", "End"];
     const rows = wearLogs.map((log) => {
@@ -621,7 +694,7 @@ const App: React.FC = () => {
     reader.readAsText(file);
   };
 
-  // ===== P/L CSV (per year or all) =====
+  // ===== P/L CSV =====
   const exportPLCSV = () => {
     const defaultYear = new Date().getFullYear().toString();
     const yearInput = window.prompt(
@@ -755,6 +828,7 @@ const App: React.FC = () => {
           onClick={() => setActiveTab("wear")}
           style={{
             padding: "6px 12px",
+            marginRight: 8,
             borderRadius: 4,
             border: activeTab === "wear" ? "2px solid white" : "1px solid gray",
             background: activeTab === "wear" ? "#444" : "#222",
@@ -763,9 +837,21 @@ const App: React.FC = () => {
         >
           Wear Log
         </button>
+        <button
+          onClick={() => setActiveTab("stats")}
+          style={{
+            padding: "6px 12px",
+            borderRadius: 4,
+            border: activeTab === "stats" ? "2px solid white" : "1px solid gray",
+            background: activeTab === "stats" ? "#444" : "#222",
+            color: "white",
+          }}
+        >
+          Stats
+        </button>
       </div>
 
-      {/* Shared search (acts as filter for Inventory + Sold) */}
+      {/* Shared search */}
       <div
         style={{
           marginBottom: 12,
@@ -981,6 +1067,9 @@ const App: React.FC = () => {
                     Status
                   </th>
                   <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
+                    Date Sold
+                  </th>
+                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
                     Worn ×
                   </th>
                   <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
@@ -1030,8 +1119,21 @@ const App: React.FC = () => {
                     >
                       {toCurrency(w.postedPrice ?? null)}
                     </td>
-                    <td style={{ borderBottom: "1px solid #333", padding: 6 }}>
+                    <td
+                      style={{
+                        borderBottom: "1px solid #333",
+                        padding: 6,
+                      }}
+                    >
                       {w.status}
+                    </td>
+                    <td
+                      style={{
+                        borderBottom: "1px solid #333",
+                        padding: 6,
+                      }}
+                    >
+                      {w.dateSold || "—"}
                     </td>
                     <td
                       style={{
@@ -1065,13 +1167,7 @@ const App: React.FC = () => {
                     >
                       <button
                         onClick={() => markSold(w.id)}
-                        style={{
-                          padding: "4px 8px",
-                          borderRadius: 4,
-                          background: "#8b0000",
-                          color: "white",
-                          border: "none",
-                        }}
+                        style={{ padding: "4px 8px", borderRadius: 4 }}
                       >
                         Sold
                       </button>
@@ -1115,7 +1211,7 @@ const App: React.FC = () => {
                 {derived.available.length === 0 && (
                   <tr>
                     <td
-                      colSpan={10}
+                      colSpan={11}
                       style={{
                         padding: 8,
                         textAlign: "center",
@@ -1178,7 +1274,7 @@ const App: React.FC = () => {
             </div>
           </div>
 
-          {/* Summary bar (respects filters) */}
+          {/* Summary bar */}
           <div
             style={{
               marginBottom: 12,
@@ -1260,6 +1356,9 @@ const App: React.FC = () => {
                   </th>
                   <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
                     Worn ×
+                  </th>
+                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
+                    Undo
                   </th>
                   <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
                     Edit
@@ -1350,6 +1449,20 @@ const App: React.FC = () => {
                       }}
                     >
                       <button
+                        onClick={() => undoSold(w.id)}
+                        style={{ padding: "4px 8px", borderRadius: 4 }}
+                      >
+                        Undo
+                      </button>
+                    </td>
+                    <td
+                      style={{
+                        borderBottom: "1px solid #333",
+                        padding: 6,
+                        textAlign: "right",
+                      }}
+                    >
+                      <button
                         onClick={() => editSoldWatch(w.id)}
                         style={{ padding: "4px 8px", borderRadius: 4 }}
                       >
@@ -1381,7 +1494,7 @@ const App: React.FC = () => {
                 {filteredSold.length === 0 && (
                   <tr>
                     <td
-                      colSpan={10}
+                      colSpan={11}
                       style={{
                         padding: 8,
                         textAlign: "center",
@@ -1630,6 +1743,193 @@ const App: React.FC = () => {
                       }}
                     >
                       No wear sessions yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* STATS TAB */}
+      {activeTab === "stats" && (
+        <div>
+          {/* Top summary */}
+          <div
+            style={{
+              marginBottom: 16,
+              padding: 10,
+              borderRadius: 6,
+              border: "1px solid #555",
+              background: "#111",
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 16,
+              fontSize: 14,
+            }}
+          >
+            <div>
+              <div style={{ fontSize: 12, color: "#aaa" }}>Total watches</div>
+              <div>{totalWatches}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: "#aaa" }}>Available</div>
+              <div>{totalAvailable}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: "#aaa" }}>Sold</div>
+              <div>{totalSoldCount}</div>
+            </div>
+            {favouriteWatch && (
+              <div>
+                <div style={{ fontSize: 12, color: "#aaa" }}>Most worn</div>
+                <div>
+                  {favouriteWatch.watch.model} · {favouriteWatch.wearCount} wears
+                </div>
+              </div>
+            )}
+            {mostProfitableWatch && (
+              <div>
+                <div style={{ fontSize: 12, color: "#aaa" }}>Most profit</div>
+                <div>
+                  {mostProfitableWatch.model} ·{" "}
+                  {toCurrency(mostProfitableWatch.profit)}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Per-watch stats table */}
+          <div style={{ overflowX: "auto" }}>
+            <table
+              style={{
+                width: "100%",
+                borderCollapse: "collapse",
+                fontSize: 14,
+              }}
+            >
+              <thead>
+                <tr>
+                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
+                    Model
+                  </th>
+                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
+                    Status
+                  </th>
+                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
+                    Worn ×
+                  </th>
+                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
+                    Total wear time
+                  </th>
+                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
+                    Purchase
+                  </th>
+                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
+                    Sold price
+                  </th>
+                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
+                    Profit
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {statsByWatch.map((s) => {
+                  const w = s.watch;
+                  const totalCost = w.purchasePrice + w.partsCost;
+                  const profit =
+                    w.status === "Sold" && typeof w.soldPrice === "number"
+                      ? w.soldPrice - totalCost
+                      : null;
+                  return (
+                    <tr key={w.id}>
+                      <td
+                        style={{
+                          borderBottom: "1px solid #333",
+                          padding: 6,
+                        }}
+                      >
+                        {w.model}
+                      </td>
+                      <td
+                        style={{
+                          borderBottom: "1px solid #333",
+                          padding: 6,
+                        }}
+                      >
+                        {w.status}
+                      </td>
+                      <td
+                        style={{
+                          borderBottom: "1px solid #333",
+                          padding: 6,
+                          textAlign: "right",
+                        }}
+                      >
+                        {s.wearCount}
+                      </td>
+                      <td
+                        style={{
+                          borderBottom: "1px solid #333",
+                          padding: 6,
+                        }}
+                      >
+                        {s.wearCount > 0
+                          ? formatTotalDuration(s.totalMinutes)
+                          : "—"}
+                      </td>
+                      <td
+                        style={{
+                          borderBottom: "1px solid #333",
+                          padding: 6,
+                          textAlign: "right",
+                        }}
+                      >
+                        {toCurrency(w.purchasePrice)}
+                      </td>
+                      <td
+                        style={{
+                          borderBottom: "1px solid #333",
+                          padding: 6,
+                          textAlign: "right",
+                        }}
+                      >
+                        {toCurrency(w.soldPrice ?? null)}
+                      </td>
+                      <td
+                        style={{
+                          borderBottom: "1px solid #333",
+                          padding: 6,
+                          textAlign: "right",
+                          color:
+                            typeof profit === "number"
+                              ? profit > 0
+                                ? "#4caf50"
+                                : profit < 0
+                                ? "#ff5252"
+                                : "inherit"
+                              : "#888",
+                        }}
+                      >
+                        {typeof profit === "number"
+                          ? toCurrency(profit)
+                          : "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {statsByWatch.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={7}
+                      style={{
+                        padding: 8,
+                        textAlign: "center",
+                        color: "#777",
+                      }}
+                    >
+                      No watches to show yet.
                     </td>
                   </tr>
                 )}
