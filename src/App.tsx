@@ -8,18 +8,19 @@ type WatchItem = {
   postedPrice?: number | null;
   soldPrice?: number | null;
   status: "Available" | "Sold";
-  dateSold?: string | null;
+  dateSold?: string | null; // YYYY-MM-DD
   notes?: string;
 };
 
 type WearLog = {
   id: string;
   watchId: string;
-  date: string; // YYYY-MM-DD
+  start: string; // ISO datetime
+  end: string | null; // ISO datetime or null if still wearing
 };
 
 const STORAGE_ITEMS = "watch-tracker-items-v1";
-const STORAGE_WEAR = "watch-tracker-wear-v1";
+const STORAGE_WEAR = "watch-tracker-wear-v2"; // bump version so old data doesn't break
 
 const parseNumber = (v: string) => {
   const n = Number(v.replace(/[^0-9.\-]/g, ""));
@@ -31,7 +32,25 @@ const toCurrency = (n: number | null | undefined) =>
     ? n.toLocaleString(undefined, { style: "currency", currency: "USD" })
     : "—";
 
-const todayISO = () => new Date().toISOString().slice(0, 10);
+const formatDateTime = (iso: string | null) => {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString();
+};
+
+const formatDuration = (start: string, end: string | null) => {
+  const s = new Date(start);
+  const e = end ? new Date(end) : new Date();
+  if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) return "—";
+  const ms = e.getTime() - s.getTime();
+  if (ms <= 0) return "—";
+  const mins = Math.round(ms / 60000);
+  if (mins < 60) return `${mins} min`;
+  const hours = Math.floor(mins / 60);
+  const rem = mins % 60;
+  return rem ? `${hours}h ${rem}m` : `${hours}h`;
+};
 
 const useLocalData = () => {
   const [items, setItems] = useState<WatchItem[]>([]);
@@ -40,11 +59,19 @@ const useLocalData = () => {
   useEffect(() => {
     try {
       const rawItems = localStorage.getItem(STORAGE_ITEMS);
-      const rawWear = localStorage.getItem(STORAGE_WEAR);
       if (rawItems) setItems(JSON.parse(rawItems));
-      if (rawWear) setWearLogs(JSON.parse(rawWear));
     } catch (e) {
-      console.error("Failed to load data", e);
+      console.error("Failed to load items", e);
+    }
+
+    try {
+      const rawWear = localStorage.getItem(STORAGE_WEAR);
+      if (rawWear) {
+        const parsed = JSON.parse(rawWear);
+        if (Array.isArray(parsed)) setWearLogs(parsed);
+      }
+    } catch (e) {
+      console.error("Failed to load wear logs", e);
     }
   }, []);
 
@@ -71,13 +98,12 @@ const App: React.FC = () => {
   const [newPurchase, setNewPurchase] = useState("");
   const [newParts, setNewParts] = useState("");
 
+  const nowISO = () => new Date().toISOString();
+
   const derived = useMemo(() => {
     const wearCountMap: Record<string, number> = {};
 
     wearLogs.forEach((log) => {
-      const watch = items.find((i) => i.id === log.watchId);
-      if (!watch) return;
-      if (watch.dateSold && log.date > watch.dateSold) return; // ignore after sold
       wearCountMap[log.watchId] = (wearCountMap[log.watchId] || 0) + 1;
     });
 
@@ -89,20 +115,42 @@ const App: React.FC = () => {
       })
       .map((w) => ({ ...w, wearCount: wearCountMap[w.id] || 0 }));
 
-    return { filtered, wearCountMap };
+    const activeWear = wearLogs.find((l) => l.end === null) || null;
+
+    return { filtered, wearCountMap, activeWear };
   }, [items, filter, search, wearLogs]);
 
-  const addWear = (watchId: string, dateISO: string) => {
+  const startWear = (watchId: string) => {
     const watch = items.find((i) => i.id === watchId);
     if (!watch) return;
-    if (watch.dateSold && dateISO > watch.dateSold) {
-      alert("Cannot log wear after the watch has been sold.");
-      return;
+
+    // Prevent wearing after sold date (rough check on date)
+    if (watch.dateSold) {
+      const soldDate = new Date(watch.dateSold + "T23:59:59");
+      if (new Date() > soldDate) {
+        alert("Cannot start wear after this watch has been sold.");
+        return;
+      }
     }
-    setWearLogs((prev) => [
-      { id: crypto.randomUUID(), watchId, date: dateISO },
-      ...prev,
-    ]);
+
+    const now = nowISO();
+
+    setWearLogs((prev) => {
+      // Close any open sessions
+      const closed = prev.map((log) =>
+        log.end === null ? { ...log, end: now } : log
+      );
+
+      // Start new session for this watch
+      const newLog: WearLog = {
+        id: crypto.randomUUID(),
+        watchId,
+        start: now,
+        end: null,
+      };
+
+      return [newLog, ...closed];
+    });
   };
 
   // ===== Quick Add Watch =====
@@ -131,7 +179,6 @@ const App: React.FC = () => {
 
     setItems((prev) => [newWatch, ...prev]);
 
-    // reset form
     setNewModel("");
     setNewPurchase("");
     setNewParts("");
@@ -234,12 +281,12 @@ const App: React.FC = () => {
     reader.readAsText(file);
   };
 
-  // ===== Wear CSV (Date + Watch Model) =====
+  // ===== Wear CSV (Watch Model, Start, End) =====
   const exportWearCSV = () => {
-    const header = ["Date", "Watch Model"];
+    const header = ["Watch Model", "Start", "End"];
     const rows = wearLogs.map((log) => {
       const watch = items.find((i) => i.id === log.watchId);
-      return [log.date, watch?.model ?? ""];
+      return [watch?.model ?? "", log.start, log.end ?? ""];
     });
 
     const csv = [header, ...rows].map((r) => r.join(",")).join("\n");
@@ -260,10 +307,11 @@ const App: React.FC = () => {
       if (lines.length <= 1) return;
 
       const header = lines[0].split(",").map((h) => h.trim().toLowerCase());
-      const idxDate = header.indexOf("date");
       const idxModel = header.indexOf("watch model");
-      if (idxDate < 0 || idxModel < 0) {
-        alert("Wear CSV must have 'Date' and 'Watch Model' headers.");
+      const idxStart = header.indexOf("start");
+      const idxEnd = header.indexOf("end");
+      if (idxModel < 0 || idxStart < 0) {
+        alert("Wear CSV must have 'Watch Model', 'Start', and 'End' headers.");
         return;
       }
 
@@ -271,20 +319,22 @@ const App: React.FC = () => {
 
       lines.slice(1).forEach((line) => {
         const cols = line.split(",");
-        const dateRaw = (cols[idxDate] || "").trim();
         const modelRaw = (cols[idxModel] || "").trim();
-        if (!dateRaw || !modelRaw) return;
+        const startRaw = (cols[idxStart] || "").trim();
+        const endRaw = idxEnd >= 0 ? (cols[idxEnd] || "").trim() : "";
+
+        if (!modelRaw || !startRaw) return;
 
         const watch = items.find(
           (i) => i.model.trim() === modelRaw
         );
         if (!watch) return;
-        if (watch.dateSold && dateRaw > watch.dateSold) return;
 
         newLogs.push({
           id: crypto.randomUUID(),
           watchId: watch.id,
-          date: dateRaw,
+          start: startRaw,
+          end: endRaw || null,
         });
       });
 
@@ -591,7 +641,7 @@ const App: React.FC = () => {
                     Worn ×
                   </th>
                   <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
-                    Log
+                    Wear now
                   </th>
                 </tr>
               </thead>
@@ -660,10 +710,10 @@ const App: React.FC = () => {
                       }}
                     >
                       <button
-                        onClick={() => addWear(w.id, todayISO())}
+                        onClick={() => startWear(w.id)}
                         style={{ padding: "4px 8px", borderRadius: 4 }}
                       >
-                        Log Today
+                        Wear now
                       </button>
                     </td>
                   </tr>
@@ -690,6 +740,40 @@ const App: React.FC = () => {
 
       {activeTab === "wear" && (
         <div>
+          {/* Current active watch */}
+          <div
+            style={{
+              padding: 10,
+              borderRadius: 6,
+              border: "1px solid #555",
+              marginBottom: 12,
+              background: "#111",
+            }}
+          >
+            {derived.activeWear ? (
+              <>
+                <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                  Currently wearing
+                </div>
+                <div style={{ fontSize: 14 }}>
+                  {
+                    items.find(
+                      (i) => i.id === derived.activeWear!.watchId
+                    )?.model
+                  }{" "}
+                  <br />
+                  Since: {formatDateTime(derived.activeWear.start)}
+                </div>
+              </>
+            ) : (
+              <div style={{ fontSize: 14, color: "#aaa" }}>
+                No active watch. Start one from the Inventory tab with
+                “Wear now”.
+              </div>
+            )}
+          </div>
+
+          {/* Export / Import */}
           <div
             style={{
               display: "flex",
@@ -722,6 +806,7 @@ const App: React.FC = () => {
             </label>
           </div>
 
+          {/* Wear history */}
           <div style={{ overflowX: "auto" }}>
             <table
               style={{
@@ -733,10 +818,16 @@ const App: React.FC = () => {
               <thead>
                 <tr>
                   <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
-                    Date
+                    Watch
                   </th>
                   <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
-                    Watch
+                    Start
+                  </th>
+                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
+                    End
+                  </th>
+                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
+                    Duration
                   </th>
                 </tr>
               </thead>
@@ -751,7 +842,7 @@ const App: React.FC = () => {
                           padding: 6,
                         }}
                       >
-                        {log.date}
+                        {watch ? watch.model : "(deleted)"}
                       </td>
                       <td
                         style={{
@@ -759,7 +850,23 @@ const App: React.FC = () => {
                           padding: 6,
                         }}
                       >
-                        {watch ? watch.model : "(deleted)"}
+                        {formatDateTime(log.start)}
+                      </td>
+                      <td
+                        style={{
+                          borderBottom: "1px solid #333",
+                          padding: 6,
+                        }}
+                      >
+                        {formatDateTime(log.end)}
+                      </td>
+                      <td
+                        style={{
+                          borderBottom: "1px solid #333",
+                          padding: 6,
+                        }}
+                      >
+                        {formatDuration(log.start, log.end)}
                       </td>
                     </tr>
                   );
@@ -767,14 +874,14 @@ const App: React.FC = () => {
                 {wearLogs.length === 0 && (
                   <tr>
                     <td
-                      colSpan={2}
+                      colSpan={4}
                       style={{
                         padding: 8,
                         textAlign: "center",
                         color: "#777",
                       }}
                     >
-                      No wear logs yet.
+                      No wear sessions yet.
                     </td>
                   </tr>
                 )}
