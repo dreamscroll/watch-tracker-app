@@ -20,7 +20,7 @@ type WearLog = {
 };
 
 const STORAGE_ITEMS = "watch-tracker-items-v1";
-const STORAGE_WEAR = "watch-tracker-wear-v2"; // versioned
+const STORAGE_WEAR = "watch-tracker-wear-v2";
 
 const parseNumber = (v: string) => {
   const n = Number(v.replace(/[^0-9.\-]/g, ""));
@@ -116,17 +116,41 @@ const App: React.FC = () => {
       )
       .map((w) => ({ ...w, wearCount: wearCountMap[w.id] || 0 }));
 
-    const sold = items
-      .filter(
-        (w) =>
-          w.status === "Sold" &&
-          w.model.toLowerCase().includes(searchLower)
-      )
-      .map((w) => ({ ...w, wearCount: wearCountMap[w.id] || 0 }));
+    const soldRaw = items.filter(
+      (w) =>
+        w.status === "Sold" &&
+        w.model.toLowerCase().includes(searchLower)
+    );
+
+    const sold = soldRaw.map((w) => {
+      const totalCost = w.purchasePrice + w.partsCost;
+      const profit =
+        typeof w.soldPrice === "number" ? w.soldPrice - totalCost : null;
+      return {
+        ...w,
+        totalCost,
+        profit,
+        wearCount: wearCountMap[w.id] || 0,
+      };
+    });
+
+    const soldSummary = sold.reduce(
+      (acc, w: any) => {
+        acc.totalCost += w.totalCost;
+        if (typeof w.soldPrice === "number") {
+          acc.totalSold += w.soldPrice;
+        }
+        if (typeof w.profit === "number") {
+          acc.totalProfit += w.profit;
+        }
+        return acc;
+      },
+      { totalCost: 0, totalSold: 0, totalProfit: 0 }
+    );
 
     const activeWear = wearLogs.find((l) => l.end === null) || null;
 
-    return { available, sold, wearCountMap, activeWear };
+    return { available, sold, soldSummary, wearCountMap, activeWear };
   }, [items, wearLogs, search]);
 
   // ===== Wear handling =====
@@ -237,12 +261,30 @@ const App: React.FC = () => {
   };
 
   const markSold = (id: string) => {
-    const confirm = window.confirm(
-      "Mark this watch as SOLD and move it out of Inventory?"
-    );
-    if (!confirm) return;
+    const watch = items.find((w) => w.id === id);
+    if (!watch) return;
 
-    const today = new Date().toISOString().slice(0, 10);
+    const defaultSoldPrice =
+      typeof watch.soldPrice === "number" ? String(watch.soldPrice) : "";
+    const defaultDate =
+      watch.dateSold || new Date().toISOString().slice(0, 10);
+
+    const soldPriceInput = window.prompt(
+      "Sold price (leave blank to keep current / set later):",
+      defaultSoldPrice
+    );
+    const dateInput = window.prompt(
+      "Date sold (YYYY-MM-DD):",
+      defaultDate
+    );
+
+    const soldPrice =
+      soldPriceInput && soldPriceInput.trim() !== ""
+        ? parseNumber(soldPriceInput)
+        : watch.soldPrice ?? null;
+
+    const dateSold =
+      dateInput && dateInput.trim() !== "" ? dateInput.trim() : defaultDate;
 
     setItems((prev) =>
       prev.map((w) =>
@@ -250,7 +292,41 @@ const App: React.FC = () => {
           ? {
               ...w,
               status: "Sold",
-              dateSold: w.dateSold || today,
+              soldPrice,
+              dateSold,
+            }
+          : w
+      )
+    );
+  };
+
+  const editSoldWatch = (id: string) => {
+    const watch = items.find((w) => w.id === id);
+    if (!watch) return;
+
+    const soldPriceInput = window.prompt(
+      "Edit sold price:",
+      typeof watch.soldPrice === "number" ? String(watch.soldPrice) : ""
+    );
+    const dateInput = window.prompt(
+      "Edit date sold (YYYY-MM-DD):",
+      watch.dateSold || new Date().toISOString().slice(0, 10)
+    );
+
+    const soldPrice =
+      soldPriceInput && soldPriceInput.trim() !== ""
+        ? parseNumber(soldPriceInput)
+        : null;
+    const dateSold =
+      dateInput && dateInput.trim() !== "" ? dateInput.trim() : watch.dateSold;
+
+    setItems((prev) =>
+      prev.map((w) =>
+        w.id === id
+          ? {
+              ...w,
+              soldPrice,
+              dateSold,
             }
           : w
       )
@@ -417,6 +493,87 @@ const App: React.FC = () => {
     reader.readAsText(file);
   };
 
+  // ===== P/L CSV (per year or all) =====
+  const exportPLCSV = () => {
+    const defaultYear = new Date().getFullYear().toString();
+    const yearInput = window.prompt(
+      "Export P/L for which year? (YYYY, blank = all years)",
+      defaultYear
+    );
+
+    const filterYear = yearInput?.trim() || "";
+
+    const sold = derived.sold as any[];
+
+    const filtered = sold.filter((w) => {
+      if (!filterYear) return true;
+      return w.dateSold && String(w.dateSold).startsWith(filterYear);
+    });
+
+    if (!filtered.length) {
+      alert("No sold watches found for that period.");
+      return;
+    }
+
+    const header = [
+      "Date Sold",
+      "Model",
+      "Purchase Price",
+      "Parts Cost",
+      "Total Cost",
+      "Sold Price",
+      "Profit",
+    ];
+
+    let totalCost = 0;
+    let totalSold = 0;
+    let totalProfit = 0;
+
+    const rows = filtered.map((w) => {
+      const totalCostRow = w.totalCost;
+      const soldPrice = typeof w.soldPrice === "number" ? w.soldPrice : 0;
+      const profit = typeof w.profit === "number" ? w.profit : 0;
+
+      totalCost += totalCostRow;
+      totalSold += soldPrice;
+      totalProfit += profit;
+
+      return [
+        w.dateSold || "",
+        w.model,
+        w.purchasePrice,
+        w.partsCost,
+        totalCostRow,
+        soldPrice || "",
+        profit || "",
+      ];
+    });
+
+    const totalsRow = [
+      "TOTALS",
+      "",
+      "",
+      "",
+      totalCost,
+      totalSold,
+      totalProfit,
+    ];
+
+    const csv = [header, ...rows, totalsRow]
+      .map((r) => r.join(","))
+      .join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filterYear
+      ? `watch-pl-${filterYear}.csv`
+      : "watch-pl-all-years.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const handleWatchesFileChange = (
     e: React.ChangeEvent<HTMLInputElement>
   ) => {
@@ -501,6 +658,7 @@ const App: React.FC = () => {
         />
       </div>
 
+      {/* INVENTORY TAB */}
       {activeTab === "inventory" && (
         <div>
           {/* Quick Add + CSV */}
@@ -806,11 +964,58 @@ const App: React.FC = () => {
         </div>
       )}
 
+      {/* SOLD TAB */}
       {activeTab === "sold" && (
         <div>
-          <div style={{ marginBottom: 8, fontWeight: 600 }}>
-            Sold watches (lifetime)
+          {/* Summary bar */}
+          <div
+            style={{
+              marginBottom: 12,
+              padding: 10,
+              borderRadius: 6,
+              border: "1px solid #555",
+              background: "#111",
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 16,
+              fontSize: 14,
+            }}
+          >
+            <div>
+              <div style={{ fontSize: 12, color: "#aaa" }}>Total Cost</div>
+              <div>
+                {toCurrency(derived.soldSummary.totalCost || 0)}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: "#aaa" }}>Total Sold</div>
+              <div>
+                {toCurrency(derived.soldSummary.totalSold || 0)}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: "#aaa" }}>Total Profit</div>
+              <div>
+                {toCurrency(derived.soldSummary.totalProfit || 0)}
+              </div>
+            </div>
+            <div style={{ marginLeft: "auto" }}>
+              <button
+                onClick={exportPLCSV}
+                style={{
+                  padding: "6px 10px",
+                  borderRadius: 4,
+                  border: "1px solid #2d6cdf",
+                  background: "#2d6cdf",
+                  color: "white",
+                  fontWeight: 600,
+                }}
+              >
+                Export P/L CSV
+              </button>
+            </div>
           </div>
+
           <div style={{ overflowX: "auto" }}>
             <table
               style={{
@@ -831,13 +1036,22 @@ const App: React.FC = () => {
                     Parts
                   </th>
                   <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
+                    Total Cost
+                  </th>
+                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
                     Sold Price
+                  </th>
+                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
+                    Profit
                   </th>
                   <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
                     Date Sold
                   </th>
                   <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
                     Worn ×
+                  </th>
+                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
+                    Edit
                   </th>
                 </tr>
               </thead>
@@ -872,7 +1086,35 @@ const App: React.FC = () => {
                         textAlign: "right",
                       }}
                     >
+                      {toCurrency(w.totalCost)}
+                    </td>
+                    <td
+                      style={{
+                        borderBottom: "1px solid #333",
+                        padding: 6,
+                        textAlign: "right",
+                      }}
+                    >
                       {toCurrency(w.soldPrice ?? null)}
+                    </td>
+                    <td
+                      style={{
+                        borderBottom: "1px solid #333",
+                        padding: 6,
+                        textAlign: "right",
+                        color:
+                          typeof w.profit === "number"
+                            ? w.profit > 0
+                              ? "#4caf50"
+                              : w.profit < 0
+                              ? "#ff5252"
+                              : "inherit"
+                            : "#888",
+                      }}
+                    >
+                      {typeof w.profit === "number"
+                        ? toCurrency(w.profit)
+                        : "—"}
                     </td>
                     <td style={{ borderBottom: "1px solid #333", padding: 6 }}>
                       {w.dateSold || "—"}
@@ -886,12 +1128,26 @@ const App: React.FC = () => {
                     >
                       {w.wearCount}
                     </td>
+                    <td
+                      style={{
+                        borderBottom: "1px solid #333",
+                        padding: 6,
+                        textAlign: "right",
+                      }}
+                    >
+                      <button
+                        onClick={() => editSoldWatch(w.id)}
+                        style={{ padding: "4px 8px", borderRadius: 4 }}
+                      >
+                        Edit
+                      </button>
+                    </td>
                   </tr>
                 ))}
                 {derived.sold.length === 0 && (
                   <tr>
                     <td
-                      colSpan={6}
+                      colSpan={9}
                       style={{
                         padding: 8,
                         textAlign: "center",
@@ -908,6 +1164,7 @@ const App: React.FC = () => {
         </div>
       )}
 
+      {/* WEAR TAB */}
       {activeTab === "wear" && (
         <div>
           {/* Current active watch */}
