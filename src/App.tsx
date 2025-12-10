@@ -9,6 +9,7 @@ type WatchItem = {
   soldPrice?: number | null;
   status: "Available" | "Sold";
   dateSold?: string | null; // YYYY-MM-DD
+  purchaseDate?: string | null; // YYYY-MM-DD
   notes?: string;
 };
 
@@ -126,6 +127,7 @@ const App: React.FC = () => {
   const [newModel, setNewModel] = useState("");
   const [newPurchase, setNewPurchase] = useState("");
   const [newParts, setNewParts] = useState("");
+  const [newPurchaseDate, setNewPurchaseDate] = useState("");
 
   const nowISO = () => new Date().toISOString();
 
@@ -381,6 +383,7 @@ const App: React.FC = () => {
       ? parseNumber(newPurchase)
       : 0;
     const partsCost = newParts.trim() ? parseNumber(newParts) : 0;
+    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
 
     const newWatch: WatchItem = {
       id: crypto.randomUUID(),
@@ -391,6 +394,7 @@ const App: React.FC = () => {
       soldPrice: null,
       status: "Available",
       dateSold: null,
+      purchaseDate: newPurchaseDate.trim() || today,
       notes: undefined,
     };
 
@@ -399,6 +403,7 @@ const App: React.FC = () => {
     setNewModel("");
     setNewPurchase("");
     setNewParts("");
+    setNewPurchaseDate("");
     setShowAdd(false);
   };
 
@@ -507,6 +512,10 @@ const App: React.FC = () => {
       "Edit posted sale price (blank for none):",
       watch.postedPrice != null ? String(watch.postedPrice) : ""
     );
+    const purchaseDateInput = window.prompt(
+      "Edit purchase date (YYYY-MM-DD):",
+      watch.purchaseDate || ""
+    );
     const notesInput = window.prompt(
       "Edit notes (optional):",
       watch.notes ?? ""
@@ -530,6 +539,10 @@ const App: React.FC = () => {
                 postedInput && postedInput.trim() !== ""
                   ? parseNumber(postedInput)
                   : null,
+              purchaseDate:
+                purchaseDateInput && purchaseDateInput.trim() !== ""
+                  ? purchaseDateInput.trim()
+                  : w.purchaseDate || null,
               notes:
                 notesInput && notesInput.trim() !== ""
                   ? notesInput.trim()
@@ -544,6 +557,7 @@ const App: React.FC = () => {
   const exportWatchesCSV = () => {
     const header = [
       "Watch Model",
+      "Date Purchased",
       "Purchase Price",
       "Parts Cost",
       "Posted Sale Price",
@@ -555,6 +569,7 @@ const App: React.FC = () => {
 
     const rows = items.map((w) => [
       w.model,
+      w.purchaseDate ?? "",
       w.purchasePrice,
       w.partsCost,
       w.postedPrice ?? "",
@@ -583,6 +598,10 @@ const App: React.FC = () => {
 
       const header = lines[0].split(",").map((h) => h.trim().toLowerCase());
       const idxModel = header.indexOf("watch model");
+      const idxPurchaseDate =
+        header.indexOf("date purchased") >= 0
+          ? header.indexOf("date purchased")
+          : header.indexOf("purchase date");
       const idxPurchase = header.indexOf("purchase price");
       const idxParts = header.indexOf("parts cost");
       const idxPosted = header.indexOf("posted sale price");
@@ -597,6 +616,9 @@ const App: React.FC = () => {
           const cols = line.split(",");
           const model = idxModel >= 0 ? cols[idxModel] ?? "" : "";
           if (!model.trim()) return null;
+
+          const purchaseDate =
+            idxPurchaseDate >= 0 ? (cols[idxPurchaseDate] || "").trim() : "";
 
           const purchasePrice =
             idxPurchase >= 0 ? parseNumber(cols[idxPurchase] || "0") : 0;
@@ -624,6 +646,7 @@ const App: React.FC = () => {
             soldPrice,
             status,
             dateSold: dateSold || null,
+            purchaseDate: purchaseDate || null,
             notes: notes || undefined,
           } as WatchItem;
         })
@@ -1016,6 +1039,19 @@ const App: React.FC = () => {
                     />
                   </label>
                   <label>
+                    Purchase Date
+                    <input
+                      type="date"
+                      value={newPurchaseDate}
+                      onChange={(e) => setNewPurchaseDate(e.target.value)}
+                      style={{
+                        padding: 4,
+                        width: "100%",
+                        marginTop: 2,
+                      }}
+                    />
+                  </label>
+                  <label>
                     Purchase Price
                     <input
                       type="text"
@@ -1058,6 +1094,7 @@ const App: React.FC = () => {
                       setNewModel("");
                       setNewPurchase("");
                       setNewParts("");
+                      setNewPurchaseDate("");
                     }}
                     style={{
                       padding: "4px 10px",
@@ -1162,6 +1199,9 @@ const App: React.FC = () => {
                     Model
                   </th>
                   <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
+                    Date Bought
+                  </th>
+                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
                     Purchase
                   </th>
                   <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
@@ -1198,6 +1238,14 @@ const App: React.FC = () => {
                   <tr key={w.id}>
                     <td style={{ borderBottom: "1px solid #333", padding: 6 }}>
                       {w.model}
+                    </td>
+                    <td
+                      style={{
+                        borderBottom: "1px solid #333",
+                        padding: 6,
+                      }}
+                    >
+                      {w.purchaseDate || "—"}
                     </td>
                     <td
                       style={{
@@ -1318,7 +1366,7 @@ const App: React.FC = () => {
                 {derived.available.length === 0 && (
                   <tr>
                     <td
-                      colSpan={11}
+                      colSpan={12}
                       style={{
                         padding: 8,
                         textAlign: "center",
