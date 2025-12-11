@@ -383,7 +383,7 @@ const App: React.FC = () => {
       ? parseNumber(newPurchase)
       : 0;
     const partsCost = newParts.trim() ? parseNumber(newParts) : 0;
-    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    const todayISO = new Date().toISOString().slice(0, 10);
 
     const newWatch: WatchItem = {
       id: crypto.randomUUID(),
@@ -394,7 +394,7 @@ const App: React.FC = () => {
       soldPrice: null,
       status: "Available",
       dateSold: null,
-      purchaseDate: newPurchaseDate.trim() || today,
+      purchaseDate: newPurchaseDate.trim() || todayISO,
       notes: undefined,
     };
 
@@ -512,10 +512,6 @@ const App: React.FC = () => {
       "Edit posted sale price (blank for none):",
       watch.postedPrice != null ? String(watch.postedPrice) : ""
     );
-    const purchaseDateInput = window.prompt(
-      "Edit purchase date (YYYY-MM-DD):",
-      watch.purchaseDate || ""
-    );
     const notesInput = window.prompt(
       "Edit notes (optional):",
       watch.notes ?? ""
@@ -539,10 +535,6 @@ const App: React.FC = () => {
                 postedInput && postedInput.trim() !== ""
                   ? parseNumber(postedInput)
                   : null,
-              purchaseDate:
-                purchaseDateInput && purchaseDateInput.trim() !== ""
-                  ? purchaseDateInput.trim()
-                  : w.purchaseDate || null,
               notes:
                 notesInput && notesInput.trim() !== ""
                   ? notesInput.trim()
@@ -598,10 +590,7 @@ const App: React.FC = () => {
 
       const header = lines[0].split(",").map((h) => h.trim().toLowerCase());
       const idxModel = header.indexOf("watch model");
-      const idxPurchaseDate =
-        header.indexOf("date purchased") >= 0
-          ? header.indexOf("date purchased")
-          : header.indexOf("purchase date");
+      const idxPurchaseDate = header.indexOf("date purchased");
       const idxPurchase = header.indexOf("purchase price");
       const idxParts = header.indexOf("parts cost");
       const idxPosted = header.indexOf("posted sale price");
@@ -619,7 +608,6 @@ const App: React.FC = () => {
 
           const purchaseDate =
             idxPurchaseDate >= 0 ? (cols[idxPurchaseDate] || "").trim() : "";
-
           const purchasePrice =
             idxPurchase >= 0 ? parseNumber(cols[idxPurchase] || "0") : 0;
           const partsCost =
@@ -640,13 +628,13 @@ const App: React.FC = () => {
           return {
             id: crypto.randomUUID(),
             model,
+            purchaseDate: purchaseDate || null,
             purchasePrice,
             partsCost,
             postedPrice,
             soldPrice,
             status,
             dateSold: dateSold || null,
-            purchaseDate: purchaseDate || null,
             notes: notes || undefined,
           } as WatchItem;
         })
@@ -880,1164 +868,434 @@ const App: React.FC = () => {
     e.target.value = "";
   };
 
+  // ================== UI ==================
+
+  const tabButtonStyle = (active: boolean): React.CSSProperties => ({
+    padding: "6px 12px",
+    marginRight: 8,
+    borderRadius: 999,
+    border: active ? "1px solid #60a5fa" : "1px solid #374151",
+    background: active ? "rgba(37,99,235,0.3)" : "#111827",
+    color: "#e5e7eb",
+    fontSize: 13,
+    fontWeight: active ? 600 : 500,
+    cursor: "pointer",
+    boxShadow: active ? "0 0 0 1px rgba(37,99,235,0.4)" : "none",
+    transition: "background 0.15s ease, transform 0.12s ease",
+  });
+
+  const primaryButtonStyle: React.CSSProperties = {
+    padding: "6px 12px",
+    borderRadius: 6,
+    border: "1px solid #2563eb",
+    background: "linear-gradient(135deg,#2563eb,#1d4ed8)",
+    color: "white",
+    fontWeight: 600,
+    cursor: "pointer",
+  };
+
+  const subtleButtonStyle: React.CSSProperties = {
+    padding: "6px 10px",
+    borderRadius: 6,
+    border: "1px solid #4b5563",
+    background: "#111827",
+    color: "#e5e7eb",
+    cursor: "pointer",
+  };
+
+  const dangerButtonStyle: React.CSSProperties = {
+    ...subtleButtonStyle,
+    background: "#7f1d1d",
+    border: "1px solid #b91c1c",
+  };
+
+  const tableHeadCell: React.CSSProperties = {
+    borderBottom: "1px solid #374151",
+    padding: 6,
+    fontSize: 12,
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
+    color: "#9ca3af",
+    background: "#020617",
+    textAlign: "left",
+  };
+
+  const tableBodyCell: React.CSSProperties = {
+    borderBottom: "1px solid #1f2933",
+    padding: 6,
+    fontSize: 13,
+  };
+
   return (
-    <div style={{ maxWidth: 1000, margin: "0 auto", padding: 16 }}>
-      <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 4 }}>
-        Watch Tracker
-      </h1>
+    <div
+      style={{
+        minHeight: "100vh",
+        background:
+          "radial-gradient(circle at top, #111827 0, #020617 55%, #000 100%)",
+        color: "#e5e7eb",
+        fontFamily:
+          'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+      }}
+    >
       <div
         style={{
-          fontSize: 12,
-          color: "#aaa",
-          marginBottom: 16,
+          maxWidth: 1100,
+          margin: "0 auto",
+          padding: "24px 16px 40px",
         }}
       >
-        Tip: Export a full backup JSON from the Inventory tab once in a while so
-        you never lose your collection.
-      </div>
-
-      {/* Tabs */}
-      <div style={{ marginBottom: 16 }}>
-        <button
-          onClick={() => setActiveTab("inventory")}
+        <header
           style={{
-            padding: "6px 12px",
-            marginRight: 8,
-            borderRadius: 4,
-            border:
-              activeTab === "inventory" ? "2px solid white" : "1px solid gray",
-            background: activeTab === "inventory" ? "#444" : "#222",
-            color: "white",
+            marginBottom: 20,
+            display: "flex",
+            alignItems: "baseline",
+            justifyContent: "space-between",
+            gap: 12,
           }}
         >
-          Inventory
-        </button>
-        <button
-          onClick={() => setActiveTab("sold")}
-          style={{
-            padding: "6px 12px",
-            marginRight: 8,
-            borderRadius: 4,
-            border: activeTab === "sold" ? "2px solid white" : "1px solid gray",
-            background: activeTab === "sold" ? "#444" : "#222",
-            color: "white",
-          }}
-        >
-          Sold
-        </button>
-        <button
-          onClick={() => setActiveTab("wear")}
-          style={{
-            padding: "6px 12px",
-            marginRight: 8,
-            borderRadius: 4,
-            border: activeTab === "wear" ? "2px solid white" : "1px solid gray",
-            background: activeTab === "wear" ? "#444" : "#222",
-            color: "white",
-          }}
-        >
-          Wear Log
-        </button>
-        <button
-          onClick={() => setActiveTab("stats")}
-          style={{
-            padding: "6px 12px",
-            borderRadius: 4,
-            border: activeTab === "stats" ? "2px solid white" : "1px solid gray",
-            background: activeTab === "stats" ? "#444" : "#222",
-            color: "white",
-          }}
-        >
-          Stats
-        </button>
-      </div>
-
-      {/* Shared search */}
-      <div
-        style={{
-          marginBottom: 12,
-          display: "flex",
-          flexDirection: "column",
-          maxWidth: 260,
-          gap: 4,
-        }}
-      >
-        <label htmlFor="search">Filter by model</label>
-        <input
-          id="search"
-          type="text"
-          placeholder="e.g. Sugess"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{ padding: 4 }}
-        />
-      </div>
-
-      {/* INVENTORY TAB */}
-      {activeTab === "inventory" && (
-        <div>
-          {/* Quick Add + CSV + Backup */}
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 12,
-              marginBottom: 16,
-            }}
-          >
-            <div>
-              <button
-                onClick={() => setShowAdd((prev) => !prev)}
-                style={{
-                  padding: "6px 12px",
-                  borderRadius: 4,
-                  border: "1px solid #aaa",
-                  background: "#2d6cdf",
-                  color: "white",
-                  fontWeight: 600,
-                  marginRight: 8,
-                }}
-              >
-                {showAdd ? "Cancel" : "+ Add Watch"}
-              </button>
+          <div>
+            <h1
+              style={{
+                fontSize: 26,
+                fontWeight: 700,
+                margin: 0,
+              }}
+            >
+              Deploy Test
+            </h1>
+            <div
+              style={{
+                fontSize: 12,
+                color: "#9ca3af",
+                marginTop: 4,
+              }}
+            >
+              Track inventory, wear time, and profit across your collection.
             </div>
+          </div>
+        </header>
 
-            {showAdd && (
-              <div
-                style={{
-                  borderRadius: 6,
-                  border: "1px solid #555",
-                  padding: 10,
-                  background: "#111",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 8,
-                }}
-              >
-                <div style={{ fontWeight: 600, marginBottom: 4 }}>
-                  Quick Add Watch
-                </div>
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 6,
-                  }}
-                >
-                  <label>
-                    Model
-                    <input
-                      type="text"
-                      value={newModel}
-                      placeholder="e.g. Sugess 1963"
-                      onChange={(e) => setNewModel(e.target.value)}
-                      style={{
-                        padding: 4,
-                        width: "100%",
-                        marginTop: 2,
-                      }}
-                    />
-                  </label>
-                  <label>
-                    Purchase Date
-                    <input
-                      type="date"
-                      value={newPurchaseDate}
-                      onChange={(e) => setNewPurchaseDate(e.target.value)}
-                      style={{
-                        padding: 4,
-                        width: "100%",
-                        marginTop: 2,
-                      }}
-                    />
-                  </label>
-                  <label>
-                    Purchase Price
-                    <input
-                      type="text"
-                      value={newPurchase}
-                      placeholder="e.g. 250"
-                      onChange={(e) => setNewPurchase(e.target.value)}
-                      style={{
-                        padding: 4,
-                        width: "100%",
-                        marginTop: 2,
-                      }}
-                    />
-                  </label>
-                  <label>
-                    Parts Cost
-                    <input
-                      type="text"
-                      value={newParts}
-                      placeholder="e.g. 30"
-                      onChange={(e) => setNewParts(e.target.value)}
-                      style={{
-                        padding: 4,
-                        width: "100%",
-                        marginTop: 2,
-                      }}
-                    />
-                  </label>
-                </div>
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "flex-end",
-                    gap: 8,
-                    marginTop: 6,
-                  }}
-                >
-                  <button
-                    onClick={() => {
-                      setShowAdd(false);
-                      setNewModel("");
-                      setNewPurchase("");
-                      setNewParts("");
-                      setNewPurchaseDate("");
-                    }}
-                    style={{
-                      padding: "4px 10px",
-                      borderRadius: 4,
-                      border: "1px solid #666",
-                      background: "#222",
-                      color: "white",
-                    }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleAddWatch}
-                    style={{
-                      padding: "4px 10px",
-                      borderRadius: 4,
-                      border: "1px solid #2d6cdf",
-                      background: "#2d6cdf",
-                      color: "white",
-                      fontWeight: 600,
-                    }}
-                  >
-                    Save
-                  </button>
-                </div>
-              </div>
-            )}
+        {/* Tabs */}
+        <div style={{ marginBottom: 16 }}>
+          <button
+            onClick={() => setActiveTab("inventory")}
+            style={tabButtonStyle(activeTab === "inventory")}
+          >
+            Inventory
+          </button>
+          <button
+            onClick={() => setActiveTab("sold")}
+            style={tabButtonStyle(activeTab === "sold")}
+          >
+            Sold
+          </button>
+          <button
+            onClick={() => setActiveTab("wear")}
+            style={tabButtonStyle(activeTab === "wear")}
+          >
+            Wear Log
+          </button>
+          <button
+            onClick={() => setActiveTab("stats")}
+            style={tabButtonStyle(activeTab === "stats")}
+          >
+            Stats
+          </button>
+        </div>
 
+        {/* Shared search */}
+        <div
+          style={{
+            marginBottom: 12,
+            display: "flex",
+            flexDirection: "column",
+            maxWidth: 260,
+            gap: 4,
+          }}
+        >
+          <label htmlFor="search" style={{ fontSize: 13 }}>
+            Filter by model
+          </label>
+          <input
+            id="search"
+            type="text"
+            placeholder="e.g. Sugess"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{
+              padding: 6,
+              borderRadius: 6,
+              border: "1px solid #374151",
+              background: "#020617",
+              color: "#e5e7eb",
+              fontSize: 13,
+            }}
+          />
+        </div>
+
+        {/* INVENTORY TAB */}
+        {activeTab === "inventory" && (
+          <div>
+            {/* Quick Add + CSV + Backup */}
             <div
               style={{
                 display: "flex",
-                flexWrap: "wrap",
-                gap: 8,
+                flexDirection: "column",
+                gap: 12,
+                marginBottom: 16,
               }}
             >
-              <button
-                onClick={exportWatchesCSV}
-                style={{ padding: "6px 10px", borderRadius: 4 }}
-              >
-                Export Watches CSV
-              </button>
+              <div>
+                <button
+                  onClick={() => setShowAdd((prev) => !prev)}
+                  style={primaryButtonStyle}
+                >
+                  {showAdd ? "Cancel" : "+ Add Watch"}
+                </button>
+              </div>
 
-              <label
-                style={{
-                  padding: "6px 10px",
-                  borderRadius: 4,
-                  border: "1px solid gray",
-                  cursor: "pointer",
-                }}
-              >
-                Import Watches CSV
-                <input
-                  type="file"
-                  accept=".csv"
-                  style={{ display: "none" }}
-                  onChange={handleWatchesFileChange}
-                />
-              </label>
-
-              <button
-                onClick={exportFullBackup}
-                style={{
-                  padding: "6px 10px",
-                  borderRadius: 4,
-                  border: "1px solid #2d6cdf",
-                }}
-              >
-                Export FULL Backup (JSON)
-              </button>
-
-              <label
-                style={{
-                  padding: "6px 10px",
-                  borderRadius: 4,
-                  border: "1px solid gray",
-                  cursor: "pointer",
-                }}
-              >
-                Import Backup JSON
-                <input
-                  type="file"
-                  accept="application/json,.json"
-                  style={{ display: "none" }}
-                  onChange={handleBackupFileChange}
-                />
-              </label>
-            </div>
-          </div>
-
-          {/* Available inventory only */}
-          <div style={{ overflowX: "auto" }}>
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                fontSize: 14,
-              }}
-            >
-              <thead>
-                <tr>
-                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
-                    Model
-                  </th>
-                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
-                    Date Bought
-                  </th>
-                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
-                    Purchase
-                  </th>
-                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
-                    Parts
-                  </th>
-                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
-                    Posted
-                  </th>
-                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
-                    Status
-                  </th>
-                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
-                    Date Sold
-                  </th>
-                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
-                    Worn ×
-                  </th>
-                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
-                    Wear now
-                  </th>
-                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
-                    Mark sold
-                  </th>
-                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
-                    Edit
-                  </th>
-                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
-                    Delete
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {derived.available.map((w: any) => (
-                  <tr key={w.id}>
-                    <td style={{ borderBottom: "1px solid #333", padding: 6 }}>
-                      {w.model}
-                    </td>
-                    <td
-                      style={{
-                        borderBottom: "1px solid #333",
-                        padding: 6,
-                      }}
-                    >
-                      {w.purchaseDate || "—"}
-                    </td>
-                    <td
-                      style={{
-                        borderBottom: "1px solid #333",
-                        padding: 6,
-                        textAlign: "right",
-                      }}
-                    >
-                      {toCurrency(w.purchasePrice)}
-                    </td>
-                    <td
-                      style={{
-                        borderBottom: "1px solid #333",
-                        padding: 6,
-                        textAlign: "right",
-                      }}
-                    >
-                      {toCurrency(w.partsCost)}
-                    </td>
-                    <td
-                      style={{
-                        borderBottom: "1px solid #333",
-                        padding: 6,
-                        textAlign: "right",
-                      }}
-                    >
-                      {toCurrency(w.postedPrice ?? null)}
-                    </td>
-                    <td
-                      style={{
-                        borderBottom: "1px solid #333",
-                        padding: 6,
-                      }}
-                    >
-                      {w.status}
-                    </td>
-                    <td
-                      style={{
-                        borderBottom: "1px solid #333",
-                        padding: 6,
-                      }}
-                    >
-                      {w.dateSold || "—"}
-                    </td>
-                    <td
-                      style={{
-                        borderBottom: "1px solid #333",
-                        padding: 6,
-                        textAlign: "right",
-                      }}
-                    >
-                      {w.wearCount}
-                    </td>
-                    <td
-                      style={{
-                        borderBottom: "1px solid #333",
-                        padding: 6,
-                        textAlign: "right",
-                      }}
-                    >
-                      <button
-                        onClick={() => startWear(w.id)}
-                        style={{ padding: "4px 8px", borderRadius: 4 }}
-                      >
-                        Wear now
-                      </button>
-                    </td>
-                    <td
-                      style={{
-                        borderBottom: "1px solid #333",
-                        padding: 6,
-                        textAlign: "right",
-                      }}
-                    >
-                      <button
-                        onClick={() => markSold(w.id)}
-                        style={{ padding: "4px 8px", borderRadius: 4 }}
-                      >
-                        Sold
-                      </button>
-                    </td>
-                    <td
-                      style={{
-                        borderBottom: "1px solid #333",
-                        padding: 6,
-                        textAlign: "right",
-                      }}
-                    >
-                      <button
-                        onClick={() => editWatch(w.id)}
-                        style={{ padding: "4px 8px", borderRadius: 4 }}
-                      >
-                        Edit
-                      </button>
-                    </td>
-                    <td
-                      style={{
-                        borderBottom: "1px solid #333",
-                        padding: 6,
-                        textAlign: "right",
-                      }}
-                    >
-                      <button
-                        onClick={() => deleteWatch(w.id)}
+              {showAdd && (
+                <div
+                  style={{
+                    borderRadius: 10,
+                    border: "1px solid #374151",
+                    padding: 12,
+                    background:
+                      "linear-gradient(135deg,rgba(15,23,42,0.95),rgba(2,6,23,0.98))",
+                    boxShadow: "0 22px 45px rgba(0,0,0,0.55)",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 8,
+                  }}
+                >
+                  <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                    Quick Add Watch
+                  </div>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))",
+                      gap: 10,
+                    }}
+                  >
+                    <label style={{ fontSize: 13 }}>
+                      Model
+                      <input
+                        type="text"
+                        value={newModel}
+                        placeholder="e.g. Sugess 1963"
+                        onChange={(e) => setNewModel(e.target.value)}
                         style={{
-                          padding: "4px 8px",
-                          borderRadius: 4,
-                          background: "#550000",
-                          color: "white",
-                          border: "none",
+                          padding: 6,
+                          width: "100%",
+                          marginTop: 2,
+                          borderRadius: 6,
+                          border: "1px solid #4b5563",
+                          background: "#020617",
+                          color: "#e5e7eb",
+                          fontSize: 13,
                         }}
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {derived.available.length === 0 && (
+                      />
+                    </label>
+
+                    <label style={{ fontSize: 13 }}>
+                      Purchase Date
+                      <input
+                        type="date"
+                        value={newPurchaseDate}
+                        onChange={(e) => setNewPurchaseDate(e.target.value)}
+                        style={{
+                          padding: 6,
+                          width: "100%",
+                          marginTop: 2,
+                          borderRadius: 6,
+                          border: "1px solid #4b5563",
+                          background: "#020617",
+                          color: "#e5e7eb",
+                          fontSize: 13,
+                        }}
+                      />
+                    </label>
+
+                    <label style={{ fontSize: 13 }}>
+                      Purchase Price
+                      <input
+                        type="text"
+                        value={newPurchase}
+                        placeholder="e.g. 250"
+                        onChange={(e) => setNewPurchase(e.target.value)}
+                        style={{
+                          padding: 6,
+                          width: "100%",
+                          marginTop: 2,
+                          borderRadius: 6,
+                          border: "1px solid #4b5563",
+                          background: "#020617",
+                          color: "#e5e7eb",
+                          fontSize: 13,
+                        }}
+                      />
+                    </label>
+
+                    <label style={{ fontSize: 13 }}>
+                      Parts Cost
+                      <input
+                        type="text"
+                        value={newParts}
+                        placeholder="e.g. 30"
+                        onChange={(e) => setNewParts(e.target.value)}
+                        style={{
+                          padding: 6,
+                          width: "100%",
+                          marginTop: 2,
+                          borderRadius: 6,
+                          border: "1px solid #4b5563",
+                          background: "#020617",
+                          color: "#e5e7eb",
+                          fontSize: 13,
+                        }}
+                      />
+                    </label>
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "flex-end",
+                      gap: 8,
+                      marginTop: 6,
+                    }}
+                  >
+                    <button
+                      onClick={() => {
+                        setShowAdd(false);
+                        setNewModel("");
+                        setNewPurchase("");
+                        setNewParts("");
+                        setNewPurchaseDate("");
+                      }}
+                      style={subtleButtonStyle}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleAddWatch}
+                      style={primaryButtonStyle}
+                    >
+                      Save
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 8,
+                }}
+              >
+                <button
+                  onClick={exportWatchesCSV}
+                  style={subtleButtonStyle}
+                >
+                  Export Watches CSV
+                </button>
+
+                <label
+                  style={{
+                    ...subtleButtonStyle,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    cursor: "pointer",
+                  }}
+                >
+                  Import Watches CSV
+                  <input
+                    type="file"
+                    accept=".csv"
+                    style={{ display: "none" }}
+                    onChange={handleWatchesFileChange}
+                  />
+                </label>
+
+                <button
+                  onClick={exportFullBackup}
+                  style={subtleButtonStyle}
+                >
+                  Export FULL Backup (JSON)
+                </button>
+
+                <label
+                  style={{
+                    ...subtleButtonStyle,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    cursor: "pointer",
+                  }}
+                >
+                  Import Backup JSON
+                  <input
+                    type="file"
+                    accept="application/json,.json"
+                    style={{ display: "none" }}
+                    onChange={handleBackupFileChange}
+                  />
+                </label>
+              </div>
+            </div>
+
+            {/* Available inventory only */}
+            <div
+              style={{
+                overflowX: "auto",
+                borderRadius: 10,
+                border: "1px solid #1f2933",
+                background:
+                  "linear-gradient(135deg,rgba(15,23,42,0.96),rgba(3,7,18,0.98))",
+                boxShadow: "0 20px 45px rgba(0,0,0,0.55)",
+              }}
+            >
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  fontSize: 14,
+                }}
+              >
+                <thead>
                   <tr>
-                    <td
-                      colSpan={12}
-                      style={{
-                        padding: 8,
-                        textAlign: "center",
-                        color: "#777",
-                      }}
-                    >
-                      No available watches.
-                    </td>
+                    <th style={tableHeadCell}>Model</th>
+                    <th style={tableHeadCell}>Date Bought</th>
+                    <th style={tableHeadCell}>Purchase</th>
+                    <th style={tableHeadCell}>Parts</th>
+                    <th style={tableHeadCell}>Posted</th>
+                    <th style={tableHeadCell}>Status</th>
+                    <th style={tableHeadCell}>Date Sold</th>
+                    <th style={tableHeadCell}>Worn ×</th>
+                    <th style={tableHeadCell}>Wear now</th>
+                    <th style={tableHeadCell}>Mark sold</th>
+                    <th style={tableHeadCell}>Edit</th>
+                    <th style={tableHeadCell}>Delete</th>
                   </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* SOLD TAB */}
-      {activeTab === "sold" && (
-        <div>
-          {/* Filters row */}
-          <div
-            style={{
-              marginBottom: 12,
-              display: "flex",
-              flexWrap: "wrap",
-              gap: 8,
-              alignItems: "center",
-              fontSize: 14,
-            }}
-          >
-            <div>
-              <span>Year: </span>
-              <select
-                value={soldYearFilter}
-                onChange={(e) => setSoldYearFilter(e.target.value)}
-                style={{ padding: 4 }}
-              >
-                <option value="all">All</option>
-                {soldYears.map((y) => (
-                  <option key={y} value={y}>
-                    {y}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <span>Result: </span>
-              <select
-                value={soldProfitFilter}
-                onChange={(e) =>
-                  setSoldProfitFilter(e.target.value as any)
-                }
-                style={{ padding: 4 }}
-              >
-                <option value="all">All</option>
-                <option value="profit">Profit only</option>
-                <option value="loss">Loss only</option>
-                <option value="breakeven">Break-even</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Summary bar */}
-          <div
-            style={{
-              marginBottom: 12,
-              padding: 10,
-              borderRadius: 6,
-              border: "1px solid #555",
-              background: "#111",
-              display: "flex",
-              flexWrap: "wrap",
-              gap: 16,
-              fontSize: 14,
-            }}
-          >
-            <div>
-              <div style={{ fontSize: 12, color: "#aaa" }}>Total Cost</div>
-              <div>
-                {toCurrency(soldSummaryFiltered.totalCost || 0)}
-              </div>
-            </div>
-            <div>
-              <div style={{ fontSize: 12, color: "#aaa" }}>Total Sold</div>
-              <div>
-                {toCurrency(soldSummaryFiltered.totalSold || 0)}
-              </div>
-            </div>
-            <div>
-              <div style={{ fontSize: 12, color: "#aaa" }}>Total Profit</div>
-              <div>
-                {toCurrency(soldSummaryFiltered.totalProfit || 0)}
-              </div>
-            </div>
-            <div style={{ marginLeft: "auto" }}>
-              <button
-                onClick={exportPLCSV}
-                style={{
-                  padding: "6px 10px",
-                  borderRadius: 4,
-                  border: "1px solid #2d6cdf",
-                  background: "#2d6cdf",
-                  color: "white",
-                  fontWeight: 600,
-                }}
-              >
-                Export P/L CSV
-              </button>
-            </div>
-          </div>
-
-          <div style={{ overflowX: "auto" }}>
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                fontSize: 14,
-              }}
-            >
-              <thead>
-                <tr>
-                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
-                    Model
-                  </th>
-                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
-                    Purchase
-                  </th>
-                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
-                    Parts
-                  </th>
-                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
-                    Total Cost
-                  </th>
-                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
-                    Sold Price
-                  </th>
-                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
-                    Profit
-                  </th>
-                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
-                    Date Sold
-                  </th>
-                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
-                    Worn ×
-                  </th>
-                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
-                    Undo
-                  </th>
-                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
-                    Edit
-                  </th>
-                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
-                    Delete
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredSold.map((w: any) => (
-                  <tr key={w.id}>
-                    <td style={{ borderBottom: "1px solid #333", padding: 6 }}>
-                      {w.model}
-                    </td>
-                    <td
+                </thead>
+                <tbody>
+                  {derived.available.map((w: any, idx: number) => (
+                    <tr
+                      key={w.id}
                       style={{
-                        borderBottom: "1px solid #333",
-                        padding: 6,
-                        textAlign: "right",
+                        background:
+                          idx % 2 === 0 ? "rgba(15,23,42,0.9)" : "rgba(2,6,23,0.9)",
                       }}
                     >
-                      {toCurrency(w.purchasePrice)}
-                    </td>
-                    <td
-                      style={{
-                        borderBottom: "1px solid #333",
-                        padding: 6,
-                        textAlign: "right",
-                      }}
-                    >
-                      {toCurrency(w.partsCost)}
-                    </td>
-                    <td
-                      style={{
-                        borderBottom: "1px solid #333",
-                        padding: 6,
-                        textAlign: "right",
-                      }}
-                    >
-                      {toCurrency(w.totalCost)}
-                    </td>
-                    <td
-                      style={{
-                        borderBottom: "1px solid #333",
-                        padding: 6,
-                        textAlign: "right",
-                      }}
-                    >
-                      {toCurrency(w.soldPrice ?? null)}
-                    </td>
-                    <td
-                      style={{
-                        borderBottom: "1px solid #333",
-                        padding: 6,
-                        textAlign: "right",
-                        color:
-                          typeof w.profit === "number"
-                            ? w.profit > 0
-                              ? "#4caf50"
-                              : w.profit < 0
-                              ? "#ff5252"
-                              : "inherit"
-                            : "#888",
-                      }}
-                    >
-                      {typeof w.profit === "number"
-                        ? toCurrency(w.profit)
-                        : "—"}
-                    </td>
-                    <td style={{ borderBottom: "1px solid #333", padding: 6 }}>
-                      {w.dateSold || "—"}
-                    </td>
-                    <td
-                      style={{
-                        borderBottom: "1px solid #333",
-                        padding: 6,
-                        textAlign: "right",
-                      }}
-                    >
-                      {w.wearCount}
-                    </td>
-                    <td
-                      style={{
-                        borderBottom: "1px solid #333",
-                        padding: 6,
-                        textAlign: "right",
-                      }}
-                    >
-                      <button
-                        onClick={() => undoSold(w.id)}
-                        style={{ padding: "4px 8px", borderRadius: 4 }}
-                      >
-                        Undo
-                      </button>
-                    </td>
-                    <td
-                      style={{
-                        borderBottom: "1px solid #333",
-                        padding: 6,
-                        textAlign: "right",
-                      }}
-                    >
-                      <button
-                        onClick={() => editSoldWatch(w.id)}
-                        style={{ padding: "4px 8px", borderRadius: 4 }}
-                      >
-                        Edit
-                      </button>
-                    </td>
-                    <td
-                      style={{
-                        borderBottom: "1px solid #333",
-                        padding: 6,
-                        textAlign: "right",
-                      }}
-                    >
-                      <button
-                        onClick={() => deleteWatch(w.id)}
-                        style={{
-                          padding: "4px 8px",
-                          borderRadius: 4,
-                          background: "#550000",
-                          color: "white",
-                          border: "none",
-                        }}
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {filteredSold.length === 0 && (
-                  <tr>
-                    <td
-                      colSpan={11}
-                      style={{
-                        padding: 8,
-                        textAlign: "center",
-                        color: "#777",
-                      }}
-                    >
-                      No sold watches match the current filters.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* WEAR TAB */}
-      {activeTab === "wear" && (
-        <div>
-          {/* Current active watch */}
-          <div
-            style={{
-              padding: 10,
-              borderRadius: 6,
-              border: "1px solid #555",
-              marginBottom: 12,
-              background: "#111",
-            }}
-          >
-            {derived.activeWear ? (
-              <>
-                <div style={{ fontWeight: 600, marginBottom: 4 }}>
-                  Currently wearing
-                </div>
-                <div style={{ fontSize: 14 }}>
-                  {(() => {
-                    const active = derived.activeWear!;
-                    const watch = items.find(
-                      (i) => i.id === active.watchId
-                    );
-                    const label = watch?.model || "(deleted)";
-                    return (
-                      <>
-                        {label}
-                        <br />
-                        Since: {formatDateTime(active.start)}
-                      </>
-                    );
-                  })()}
-                </div>
-              </>
-            ) : (
-              <div style={{ fontSize: 14, color: "#aaa" }}>
-                No active watch. Start one from the Inventory tab with
-                “Wear now”.
-              </div>
-            )}
-          </div>
-
-          {/* Wear filters */}
-          <div
-            style={{
-              marginBottom: 12,
-              display: "flex",
-              flexWrap: "wrap",
-              gap: 8,
-              alignItems: "center",
-              fontSize: 14,
-            }}
-          >
-            <span>Filter by watch:</span>
-            <select
-              value={wearWatchFilter}
-              onChange={(e) => setWearWatchFilter(e.target.value)}
-              style={{ padding: 4 }}
-            >
-              <option value="all">All watches</option>
-              {wearLabels.map((label) => (
-                <option key={label} value={label}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Controls */}
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: 8,
-              marginBottom: 16,
-            }}
-          >
-            <button
-              onClick={clearWearLogs}
-              style={{
-                padding: "6px 10px",
-                borderRadius: 4,
-                background: "#660000",
-                color: "white",
-                border: "none",
-              }}
-            >
-              Clear Wear Log
-            </button>
-            <button
-              onClick={exportWearCSV}
-              style={{ padding: "6px 10px", borderRadius: 4 }}
-            >
-              Export Wear CSV
-            </button>
-            <label
-              style={{
-                padding: "6px 10px",
-                borderRadius: 4,
-                border: "1px solid gray",
-                cursor: "pointer",
-              }}
-            >
-              Import Wear CSV
-              <input
-                type="file"
-                accept=".csv"
-                style={{ display: "none" }}
-                onChange={handleWearFileChange}
-              />
-            </label>
-          </div>
-
-          {/* Wear history */}
-          <div style={{ overflowX: "auto" }}>
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                fontSize: 14,
-              }}
-            >
-              <thead>
-                <tr>
-                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
-                    Watch
-                  </th>
-                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
-                    Start
-                  </th>
-                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
-                    End
-                  </th>
-                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
-                    Duration
-                  </th>
-                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {wearLogs
-                  .filter((log) => {
-                    if (wearWatchFilter === "all") return true;
-                    const watch = items.find(
-                      (i) => i.id === log.watchId
-                    );
-                    const label = (watch?.model || "").trim();
-                    return label === wearWatchFilter;
-                  })
-                  .map((log) => {
-                    const watch = items.find((i) => i.id === log.watchId);
-                    const label = watch ? watch.model : "(deleted)";
-                    return (
-                      <tr key={log.id}>
-                        <td
-                          style={{
-                            borderBottom: "1px solid #333",
-                            padding: 6,
-                          }}
-                        >
-                          {label}
-                        </td>
-                        <td
-                          style={{
-                            borderBottom: "1px solid #333",
-                            padding: 6,
-                          }}
-                        >
-                          {formatDateTime(log.start)}
-                        </td>
-                        <td
-                          style={{
-                            borderBottom: "1px solid #333",
-                            padding: 6,
-                          }}
-                        >
-                          {formatDateTime(log.end)}
-                        </td>
-                        <td
-                          style={{
-                            borderBottom: "1px solid #333",
-                            padding: 6,
-                          }}
-                        >
-                          {formatDuration(log.start, log.end)}
-                        </td>
-                        <td
-                          style={{
-                            borderBottom: "1px solid #333",
-                            padding: 6,
-                          }}
-                        >
-                          <button
-                            onClick={() => editWearLog(log.id)}
-                            style={{
-                              padding: "3px 6px",
-                              borderRadius: 4,
-                              marginRight: 4,
-                            }}
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => deleteWearLog(log.id)}
-                            style={{
-                              padding: "3px 6px",
-                              borderRadius: 4,
-                              background: "#550000",
-                              color: "white",
-                              border: "none",
-                            }}
-                          >
-                            Delete
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                {wearLogs.length === 0 && (
-                  <tr>
-                    <td
-                      colSpan={5}
-                      style={{
-                        padding: 8,
-                        textAlign: "center",
-                        color: "#777",
-                      }}
-                    >
-                      No wear sessions yet.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* STATS TAB */}
-      {activeTab === "stats" && (
-        <div>
-          {/* Top summary */}
-          <div
-            style={{
-              marginBottom: 16,
-              padding: 10,
-              borderRadius: 6,
-              border: "1px solid #555",
-              background: "#111",
-              display: "flex",
-              flexWrap: "wrap",
-              gap: 16,
-              fontSize: 14,
-            }}
-          >
-            <div>
-              <div style={{ fontSize: 12, color: "#aaa" }}>Total watches</div>
-              <div>{totalWatches}</div>
-            </div>
-            <div>
-              <div style={{ fontSize: 12, color: "#aaa" }}>Available</div>
-              <div>{totalAvailable}</div>
-            </div>
-            <div>
-              <div style={{ fontSize: 12, color: "#aaa" }}>Sold</div>
-              <div>{totalSoldCount}</div>
-            </div>
-            {favouriteWatch && (
-              <div>
-                <div style={{ fontSize: 12, color: "#aaa" }}>Most worn</div>
-                <div>
-                  {favouriteWatch.watch.model} · {favouriteWatch.wearCount} wears
-                </div>
-              </div>
-            )}
-            {mostProfitableWatch && (
-              <div>
-                <div style={{ fontSize: 12, color: "#aaa" }}>Most profit</div>
-                <div>
-                  {mostProfitableWatch.model} ·{" "}
-                  {toCurrency(mostProfitableWatch.profit)}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Per-watch stats table */}
-          <div style={{ overflowX: "auto" }}>
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                fontSize: 14,
-              }}
-            >
-              <thead>
-                <tr>
-                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
-                    Model
-                  </th>
-                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
-                    Status
-                  </th>
-                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
-                    Worn ×
-                  </th>
-                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
-                    Total wear time
-                  </th>
-                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
-                    Purchase
-                  </th>
-                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
-                    Sold price
-                  </th>
-                  <th style={{ borderBottom: "1px solid #555", padding: 6 }}>
-                    Profit
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {statsByWatch.map((s) => {
-                  const w = s.watch;
-                  const totalCost = w.purchasePrice + w.partsCost;
-                  const profit =
-                    w.status === "Sold" && typeof w.soldPrice === "number"
-                      ? w.soldPrice - totalCost
-                      : null;
-                  return (
-                    <tr key={w.id}>
-                      <td
-                        style={{
-                          borderBottom: "1px solid #333",
-                          padding: 6,
-                        }}
-                      >
-                        {w.model}
+                      <td style={tableBodyCell}>{w.model}</td>
+                      <td style={tableBodyCell}>
+                        {w.purchaseDate || "—"}
                       </td>
                       <td
                         style={{
-                          borderBottom: "1px solid #333",
-                          padding: 6,
-                        }}
-                      >
-                        {w.status}
-                      </td>
-                      <td
-                        style={{
-                          borderBottom: "1px solid #333",
-                          padding: 6,
-                          textAlign: "right",
-                        }}
-                      >
-                        {s.wearCount}
-                      </td>
-                      <td
-                        style={{
-                          borderBottom: "1px solid #333",
-                          padding: 6,
-                        }}
-                      >
-                        {s.wearCount > 0
-                          ? formatTotalDuration(s.totalMinutes)
-                          : "—"}
-                      </td>
-                      <td
-                        style={{
-                          borderBottom: "1px solid #333",
-                          padding: 6,
+                          ...tableBodyCell,
                           textAlign: "right",
                         }}
                       >
@@ -2045,8 +1303,280 @@ const App: React.FC = () => {
                       </td>
                       <td
                         style={{
-                          borderBottom: "1px solid #333",
-                          padding: 6,
+                          ...tableBodyCell,
+                          textAlign: "right",
+                        }}
+                      >
+                        {toCurrency(w.partsCost)}
+                      </td>
+                      <td
+                        style={{
+                          ...tableBodyCell,
+                          textAlign: "right",
+                        }}
+                      >
+                        {toCurrency(w.postedPrice ?? null)}
+                      </td>
+                      <td style={tableBodyCell}>{w.status}</td>
+                      <td style={tableBodyCell}>{w.dateSold || "—"}</td>
+                      <td
+                        style={{
+                          ...tableBodyCell,
+                          textAlign: "right",
+                        }}
+                      >
+                        {w.wearCount}
+                      </td>
+                      <td
+                        style={{
+                          ...tableBodyCell,
+                          textAlign: "right",
+                        }}
+                      >
+                        <button
+                          onClick={() => startWear(w.id)}
+                          style={subtleButtonStyle}
+                        >
+                          Wear now
+                        </button>
+                      </td>
+                      <td
+                        style={{
+                          ...tableBodyCell,
+                          textAlign: "right",
+                        }}
+                      >
+                        <button
+                          onClick={() => markSold(w.id)}
+                          style={subtleButtonStyle}
+                        >
+                          Sold
+                        </button>
+                      </td>
+                      <td
+                        style={{
+                          ...tableBodyCell,
+                          textAlign: "right",
+                        }}
+                      >
+                        <button
+                          onClick={() => editWatch(w.id)}
+                          style={subtleButtonStyle}
+                        >
+                          Edit
+                        </button>
+                      </td>
+                      <td
+                        style={{
+                          ...tableBodyCell,
+                          textAlign: "right",
+                        }}
+                      >
+                        <button
+                          onClick={() => deleteWatch(w.id)}
+                          style={dangerButtonStyle}
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {derived.available.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={12}
+                        style={{
+                          padding: 10,
+                          textAlign: "center",
+                          color: "#6b7280",
+                        }}
+                      >
+                        No available watches.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* SOLD TAB */}
+        {activeTab === "sold" && (
+          <div>
+            {/* Filters row */}
+            <div
+              style={{
+                marginBottom: 12,
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 8,
+                alignItems: "center",
+                fontSize: 14,
+              }}
+            >
+              <div>
+                <span style={{ marginRight: 4 }}>Year:</span>
+                <select
+                  value={soldYearFilter}
+                  onChange={(e) => setSoldYearFilter(e.target.value)}
+                  style={{
+                    padding: 4,
+                    borderRadius: 6,
+                    border: "1px solid #374151",
+                    background: "#020617",
+                    color: "#e5e7eb",
+                  }}
+                >
+                  <option value="all">All</option>
+                  {soldYears.map((y) => (
+                    <option key={y} value={y}>
+                      {y}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <span style={{ marginRight: 4 }}>Result:</span>
+                <select
+                  value={soldProfitFilter}
+                  onChange={(e) =>
+                    setSoldProfitFilter(e.target.value as any)
+                  }
+                  style={{
+                    padding: 4,
+                    borderRadius: 6,
+                    border: "1px solid #374151",
+                    background: "#020617",
+                    color: "#e5e7eb",
+                  }}
+                >
+                  <option value="all">All</option>
+                  <option value="profit">Profit only</option>
+                  <option value="loss">Loss only</option>
+                  <option value="breakeven">Break-even</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Summary bar */}
+            <div
+              style={{
+                marginBottom: 12,
+                padding: 10,
+                borderRadius: 10,
+                border: "1px solid #374151",
+                background:
+                  "linear-gradient(135deg,rgba(15,23,42,0.98),rgba(3,7,18,0.98))",
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 16,
+                fontSize: 14,
+              }}
+            >
+              <div>
+                <div style={{ fontSize: 12, color: "#9ca3af" }}>
+                  Total Cost
+                </div>
+                <div>
+                  {toCurrency(soldSummaryFiltered.totalCost || 0)}
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 12, color: "#9ca3af" }}>
+                  Total Sold
+                </div>
+                <div>
+                  {toCurrency(soldSummaryFiltered.totalSold || 0)}
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 12, color: "#9ca3af" }}>
+                  Total Profit
+                </div>
+                <div>
+                  {toCurrency(soldSummaryFiltered.totalProfit || 0)}
+                </div>
+              </div>
+              <div style={{ marginLeft: "auto" }}>
+                <button
+                  onClick={exportPLCSV}
+                  style={primaryButtonStyle}
+                >
+                  Export P/L CSV
+                </button>
+              </div>
+            </div>
+
+            <div
+              style={{
+                overflowX: "auto",
+                borderRadius: 10,
+                border: "1px solid #1f2933",
+                background:
+                  "linear-gradient(135deg,rgba(15,23,42,0.96),rgba(3,7,18,0.98))",
+                boxShadow: "0 20px 45px rgba(0,0,0,0.55)",
+              }}
+            >
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  fontSize: 14,
+                }}
+              >
+                <thead>
+                  <tr>
+                    <th style={tableHeadCell}>Model</th>
+                    <th style={tableHeadCell}>Purchase</th>
+                    <th style={tableHeadCell}>Parts</th>
+                    <th style={tableHeadCell}>Total Cost</th>
+                    <th style={tableHeadCell}>Sold Price</th>
+                    <th style={tableHeadCell}>Profit</th>
+                    <th style={tableHeadCell}>Date Sold</th>
+                    <th style={tableHeadCell}>Worn ×</th>
+                    <th style={tableHeadCell}>Undo</th>
+                    <th style={tableHeadCell}>Edit</th>
+                    <th style={tableHeadCell}>Delete</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredSold.map((w: any, idx: number) => (
+                    <tr
+                      key={w.id}
+                      style={{
+                        background:
+                          idx % 2 === 0 ? "rgba(15,23,42,0.9)" : "rgba(2,6,23,0.9)",
+                      }}
+                    >
+                      <td style={tableBodyCell}>{w.model}</td>
+                      <td
+                        style={{
+                          ...tableBodyCell,
+                          textAlign: "right",
+                        }}
+                      >
+                        {toCurrency(w.purchasePrice)}
+                      </td>
+                      <td
+                        style={{
+                          ...tableBodyCell,
+                          textAlign: "right",
+                        }}
+                      >
+                        {toCurrency(w.partsCost)}
+                      </td>
+                      <td
+                        style={{
+                          ...tableBodyCell,
+                          textAlign: "right",
+                        }}
+                      >
+                        {toCurrency(w.totalCost)}
+                      </td>
+                      <td
+                        style={{
+                          ...tableBodyCell,
                           textAlign: "right",
                         }}
                       >
@@ -2054,45 +1584,489 @@ const App: React.FC = () => {
                       </td>
                       <td
                         style={{
-                          borderBottom: "1px solid #333",
-                          padding: 6,
+                          ...tableBodyCell,
                           textAlign: "right",
                           color:
-                            typeof profit === "number"
-                              ? profit > 0
-                                ? "#4caf50"
-                                : profit < 0
-                                ? "#ff5252"
-                                : "inherit"
-                              : "#888",
+                            typeof w.profit === "number"
+                              ? w.profit > 0
+                                ? "#4ade80"
+                                : w.profit < 0
+                                ? "#f97373"
+                                : "#e5e7eb"
+                              : "#9ca3af",
                         }}
                       >
-                        {typeof profit === "number"
-                          ? toCurrency(profit)
+                        {typeof w.profit === "number"
+                          ? toCurrency(w.profit)
                           : "—"}
                       </td>
+                      <td style={tableBodyCell}>{w.dateSold || "—"}</td>
+                      <td
+                        style={{
+                          ...tableBodyCell,
+                          textAlign: "right",
+                        }}
+                      >
+                        {w.wearCount}
+                      </td>
+                      <td
+                        style={{
+                          ...tableBodyCell,
+                          textAlign: "right",
+                        }}
+                      >
+                        <button
+                          onClick={() => undoSold(w.id)}
+                          style={subtleButtonStyle}
+                        >
+                          Undo
+                        </button>
+                      </td>
+                      <td
+                        style={{
+                          ...tableBodyCell,
+                          textAlign: "right",
+                        }}
+                      >
+                        <button
+                          onClick={() => editSoldWatch(w.id)}
+                          style={subtleButtonStyle}
+                        >
+                          Edit
+                        </button>
+                      </td>
+                      <td
+                        style={{
+                          ...tableBodyCell,
+                          textAlign: "right",
+                        }}
+                      >
+                        <button
+                          onClick={() => deleteWatch(w.id)}
+                          style={dangerButtonStyle}
+                        >
+                          Delete
+                        </button>
+                      </td>
                     </tr>
-                  );
-                })}
-                {statsByWatch.length === 0 && (
-                  <tr>
-                    <td
-                      colSpan={7}
-                      style={{
-                        padding: 8,
-                        textAlign: "center",
-                        color: "#777",
-                      }}
-                    >
-                      No watches to show yet.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                  ))}
+                  {filteredSold.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={11}
+                        style={{
+                          padding: 10,
+                          textAlign: "center",
+                          color: "#6b7280",
+                        }}
+                      >
+                        No sold watches match the current filters.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+
+        {/* WEAR TAB */}
+        {activeTab === "wear" && (
+          <div>
+            {/* Current active watch */}
+            <div
+              style={{
+                padding: 10,
+                borderRadius: 10,
+                border: "1px solid #374151",
+                marginBottom: 12,
+                background:
+                  "linear-gradient(135deg,rgba(15,23,42,0.96),rgba(3,7,18,0.98))",
+              }}
+            >
+              {derived.activeWear ? (
+                <>
+                  <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                    Currently wearing
+                  </div>
+                  <div style={{ fontSize: 14 }}>
+                    {(() => {
+                      const active = derived.activeWear!;
+                      const watch = items.find(
+                        (i) => i.id === active.watchId
+                      );
+                      const label = watch?.model || "(deleted)";
+                      return (
+                        <>
+                          {label}
+                          <br />
+                          Since: {formatDateTime(active.start)}
+                        </>
+                      );
+                    })()}
+                  </div>
+                </>
+              ) : (
+                <div style={{ fontSize: 14, color: "#9ca3af" }}>
+                  No active watch. Start one from the Inventory tab with
+                  “Wear now”.
+                </div>
+              )}
+            </div>
+
+            {/* Wear filters */}
+            <div
+              style={{
+                marginBottom: 12,
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 8,
+                alignItems: "center",
+                fontSize: 14,
+              }}
+            >
+              <span>Filter by watch:</span>
+              <select
+                value={wearWatchFilter}
+                onChange={(e) => setWearWatchFilter(e.target.value)}
+                style={{
+                  padding: 4,
+                  borderRadius: 6,
+                  border: "1px solid #374151",
+                  background: "#020617",
+                  color: "#e5e7eb",
+                }}
+              >
+                <option value="all">All watches</option>
+                {wearLabels.map((label) => (
+                  <option key={label} value={label}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Controls */}
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 8,
+                marginBottom: 16,
+              }}
+            >
+              <button
+                onClick={clearWearLogs}
+                style={dangerButtonStyle}
+              >
+                Clear Wear Log
+              </button>
+              <button
+                onClick={exportWearCSV}
+                style={subtleButtonStyle}
+              >
+                Export Wear CSV
+              </button>
+              <label
+                style={{
+                  ...subtleButtonStyle,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  cursor: "pointer",
+                }}
+              >
+                Import Wear CSV
+                <input
+                  type="file"
+                  accept=".csv"
+                  style={{ display: "none" }}
+                  onChange={handleWearFileChange}
+                />
+              </label>
+            </div>
+
+            {/* Wear history */}
+            <div
+              style={{
+                overflowX: "auto",
+                borderRadius: 10,
+                border: "1px solid #1f2933",
+                background:
+                  "linear-gradient(135deg,rgba(15,23,42,0.96),rgba(3,7,18,0.98))",
+                boxShadow: "0 20px 45px rgba(0,0,0,0.55)",
+              }}
+            >
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  fontSize: 14,
+                }}
+              >
+                <thead>
+                  <tr>
+                    <th style={tableHeadCell}>Watch</th>
+                    <th style={tableHeadCell}>Start</th>
+                    <th style={tableHeadCell}>End</th>
+                    <th style={tableHeadCell}>Duration</th>
+                    <th style={tableHeadCell}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {wearLogs
+                    .filter((log) => {
+                      if (wearWatchFilter === "all") return true;
+                      const watch = items.find(
+                        (i) => i.id === log.watchId
+                      );
+                      const label = (watch?.model || "").trim();
+                      return label === wearWatchFilter;
+                    })
+                    .map((log, idx) => {
+                      const watch = items.find((i) => i.id === log.watchId);
+                      const label = watch ? watch.model : "(deleted)";
+                      return (
+                        <tr
+                          key={log.id}
+                          style={{
+                            background:
+                              idx % 2 === 0
+                                ? "rgba(15,23,42,0.9)"
+                                : "rgba(2,6,23,0.9)",
+                          }}
+                        >
+                          <td style={tableBodyCell}>{label}</td>
+                          <td style={tableBodyCell}>
+                            {formatDateTime(log.start)}
+                          </td>
+                          <td style={tableBodyCell}>
+                            {formatDateTime(log.end)}
+                          </td>
+                          <td style={tableBodyCell}>
+                            {formatDuration(log.start, log.end)}
+                          </td>
+                          <td style={tableBodyCell}>
+                            <button
+                              onClick={() => editWearLog(log.id)}
+                              style={{
+                                ...subtleButtonStyle,
+                                padding: "3px 8px",
+                                marginRight: 4,
+                              }}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => deleteWearLog(log.id)}
+                              style={{
+                                ...dangerButtonStyle,
+                                padding: "3px 8px",
+                              }}
+                            >
+                              Delete
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  {wearLogs.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={5}
+                        style={{
+                          padding: 10,
+                          textAlign: "center",
+                          color: "#6b7280",
+                        }}
+                      >
+                        No wear sessions yet.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* STATS TAB */}
+        {activeTab === "stats" && (
+          <div>
+            {/* Top summary */}
+            <div
+              style={{
+                marginBottom: 16,
+                padding: 10,
+                borderRadius: 10,
+                border: "1px solid #374151",
+                background:
+                  "linear-gradient(135deg,rgba(15,23,42,0.98),rgba(3,7,18,0.98))",
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 16,
+                fontSize: 14,
+              }}
+            >
+              <div>
+                <div style={{ fontSize: 12, color: "#9ca3af" }}>
+                  Total watches
+                </div>
+                <div>{totalWatches}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 12, color: "#9ca3af" }}>
+                  Available
+                </div>
+                <div>{totalAvailable}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 12, color: "#9ca3af" }}>Sold</div>
+                <div>{totalSoldCount}</div>
+              </div>
+              {favouriteWatch && (
+                <div>
+                  <div style={{ fontSize: 12, color: "#9ca3af" }}>
+                    Most worn
+                  </div>
+                  <div>
+                    {favouriteWatch.watch.model} ·{" "}
+                    {favouriteWatch.wearCount} wears
+                  </div>
+                </div>
+              )}
+              {mostProfitableWatch && (
+                <div>
+                  <div style={{ fontSize: 12, color: "#9ca3af" }}>
+                    Most profit
+                  </div>
+                  <div>
+                    {mostProfitableWatch.model} ·{" "}
+                    {toCurrency(mostProfitableWatch.profit)}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Per-watch stats table */}
+            <div
+              style={{
+                overflowX: "auto",
+                borderRadius: 10,
+                border: "1px solid #1f2933",
+                background:
+                  "linear-gradient(135deg,rgba(15,23,42,0.96),rgba(3,7,18,0.98))",
+                boxShadow: "0 20px 45px rgba(0,0,0,0.55)",
+              }}
+            >
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  fontSize: 14,
+                }}
+              >
+                <thead>
+                  <tr>
+                    <th style={tableHeadCell}>Model</th>
+                    <th style={tableHeadCell}>Status</th>
+                    <th style={tableHeadCell}>Worn ×</th>
+                    <th style={tableHeadCell}>Total wear time</th>
+                    <th style={tableHeadCell}>Purchase</th>
+                    <th style={tableHeadCell}>Sold price</th>
+                    <th style={tableHeadCell}>Profit</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {statsByWatch.map((s, idx) => {
+                    const w = s.watch;
+                    const totalCost = w.purchasePrice + w.partsCost;
+                    const profit =
+                      w.status === "Sold" && typeof w.soldPrice === "number"
+                        ? w.soldPrice - totalCost
+                        : null;
+                    return (
+                      <tr
+                        key={w.id}
+                        style={{
+                          background:
+                            idx % 2 === 0
+                              ? "rgba(15,23,42,0.9)"
+                              : "rgba(2,6,23,0.9)",
+                        }}
+                      >
+                        <td style={tableBodyCell}>{w.model}</td>
+                        <td style={tableBodyCell}>{w.status}</td>
+                        <td
+                          style={{
+                            ...tableBodyCell,
+                            textAlign: "right",
+                          }}
+                        >
+                          {s.wearCount}
+                        </td>
+                        <td style={tableBodyCell}>
+                          {s.wearCount > 0
+                            ? formatTotalDuration(s.totalMinutes)
+                            : "—"}
+                        </td>
+                        <td
+                          style={{
+                            ...tableBodyCell,
+                            textAlign: "right",
+                          }}
+                        >
+                          {toCurrency(w.purchasePrice)}
+                        </td>
+                        <td
+                          style={{
+                            ...tableBodyCell,
+                            textAlign: "right",
+                          }}
+                        >
+                          {toCurrency(w.soldPrice ?? null)}
+                        </td>
+                        <td
+                          style={{
+                            ...tableBodyCell,
+                            textAlign: "right",
+                            color:
+                              typeof profit === "number"
+                                ? profit > 0
+                                  ? "#4ade80"
+                                  : profit < 0
+                                  ? "#f97373"
+                                  : "#e5e7eb"
+                                : "#9ca3af",
+                          }}
+                        >
+                          {typeof profit === "number"
+                            ? toCurrency(profit)
+                            : "—"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {statsByWatch.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={7}
+                        style={{
+                          padding: 10,
+                          textAlign: "center",
+                          color: "#6b7280",
+                        }}
+                      >
+                        No watches to show yet.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
