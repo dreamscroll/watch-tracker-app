@@ -961,7 +961,7 @@ const App: React.FC = () => {
                 margin: 0,
               }}
             >
-              Watch Tracker ✅ DEPLOY TEST
+              Watch Tracker
             </h1>
             <div
               style={{
